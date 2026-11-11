@@ -1,0 +1,44 @@
+{
+  "name": "ricoz-backend",
+  "version": "1.0.0",
+  "description": "Activity-First Run Club & Hobby Dating App - Backend (Phase 1)",
+  "main": "src/server.js",
+  "type": "module",
+  "scripts": {
+    "dev": "nodemon src/server.js",
+    "start": "node src/server.js",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "keywords": [
+    "run-club",
+    "hobby-dating",
+    "express",
+    "mongodb",
+    "mongoose",
+    "nodejs"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "helmet": "^8.0.0",
+    "jsonwebtoken": "^9.0.3",
+    "mongoose": "^8.9.5",
+    "morgan": "^1.10.0",
+    "qrcode": "^1.5.4",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.9",
+    "supertest": "^7.0.0",
+    "vitest": "^3.0.4"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
