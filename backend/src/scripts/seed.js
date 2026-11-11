@@ -1,8 +1,15 @@
+import { fileURLToPath } from 'url';
+import path from 'path';
 import { connectDatabase, disconnectDatabase } from '../config/database.js';
 import { User } from '../models/user.model.js';
 import { Event } from '../models/event.model.js';
 import { USER_ROLES } from '../constants/user.constants.js';
 import { EVENT_STATUSES } from '../constants/event.constants.js';
+import {
+  seedAdminAccount,
+  hasAdminEnvCredentials,
+  getAdminSeedConfig,
+} from '../services/admin-seed.service.js';
 
 /**
  * Returns a Date offset by whole days at a specific local hour.
@@ -185,6 +192,22 @@ function buildSeedEvents(primaryOrganizerId, secondaryOrganizerId) {
       price: 350,
       organizer: primaryOrganizerId,
     },
+    {
+      title: 'Twilight Parkour & Urban Mobility Jam',
+      description:
+        'Beginner-friendly outdoor balance, vaulting, and mobility workshop awaiting admin moderation approval.',
+      category: 'Other',
+      activityType: 'Parkour Session',
+      city: 'Mumbai',
+      address: 'Carter Road Open Promenade',
+      days: 12,
+      hour: 17,
+      durationHours: 2,
+      capacity: 15,
+      price: 200,
+      status: EVENT_STATUSES.PENDING,
+      organizer: secondaryOrganizerId,
+    },
   ];
 
   return catalog.map((item) => {
@@ -207,7 +230,7 @@ function buildSeedEvents(primaryOrganizerId, secondaryOrganizerId) {
       capacity: item.capacity,
       bookedCount: 0,
       price: item.price,
-      status: EVENT_STATUSES.PUBLISHED,
+      status: item.status || EVENT_STATUSES.PUBLISHED,
     };
   });
 }
@@ -259,6 +282,24 @@ async function runSeed() {
       console.log(`[Seed] User ${user.email} (${user.role}): ${created ? 'created' : 'already exists'}`);
     }
 
+    if (hasAdminEnvCredentials()) {
+      const adminResult = await seedAdminAccount(getAdminSeedConfig());
+      console.log(
+        `[Seed] Admin ${adminResult.user.email} (${adminResult.user.role}): ${
+          adminResult.created ? 'created' : 'already exists'
+        }`
+      );
+    } else {
+      const existingAdmin = await User.exists({ role: USER_ROLES.ADMIN });
+      if (existingAdmin) {
+        console.log('[Seed] Existing admin user detected; skipping env-based admin creation.');
+      } else {
+        throw new Error(
+          'No admin account exists and ADMIN_EMAIL / ADMIN_PASSWORD are not set in backend/.env. Set both environment variables and run `npm run seed` or `npm run seed:admin`.'
+        );
+      }
+    }
+
     const [primaryOrganizer, secondaryOrganizer] = createdUsers;
     const eventsToSeed = buildSeedEvents(primaryOrganizer._id, secondaryOrganizer._id);
 
@@ -278,5 +319,14 @@ async function runSeed() {
   }
 }
 
-runSeed();
+const currentFile = path.resolve(fileURLToPath(import.meta.url));
+const invokedFile = process.argv[1] ? path.resolve(process.argv[1]) : '';
+const isDirectExecution =
+  process.platform === 'win32'
+    ? invokedFile.toLowerCase() === currentFile.toLowerCase()
+    : invokedFile === currentFile;
+
+if (isDirectExecution) {
+  runSeed();
+}
 

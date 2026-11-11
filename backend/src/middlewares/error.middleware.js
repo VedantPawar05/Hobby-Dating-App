@@ -25,7 +25,7 @@ export function errorMiddleware(err, req, res, next) {
   else if (err.name === 'ZodError') {
     statusCode = 400;
     message = 'Validation failed';
-    errors = err.errors ? err.errors.map((e) => ({
+    errors = err.issues ? err.issues.map((e) => ({
       field: e.path.join('.'),
       message: e.message,
     })) : null;
@@ -84,4 +84,5 @@ export function errorMiddleware(err, req, res, next) {
 
   return ApiResponse.error(res, responseOptions);
 }
+
 

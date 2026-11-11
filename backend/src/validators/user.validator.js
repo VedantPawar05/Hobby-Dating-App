@@ -17,7 +17,7 @@ export const updateProfileSchema = z
       .optional(),
     gender: z
       .enum(GENDERS, {
-        errorMap: () => ({ message: `Gender must be one of: ${GENDERS.join(', ')}` }),
+        error: () => `Gender must be one of: ${GENDERS.join(', ')}`,
       })
       .or(z.literal(''))
       .optional()
@@ -59,8 +59,7 @@ export const updateProfileSchema = z
 
 export const updateUserRoleSchema = z.object({
   role: z.enum(ALLOWED_ROLES, {
-    errorMap: () => ({
-      message: `Role must be one of: ${ALLOWED_ROLES.join(', ')}`,
-    }),
+    error: () => `Role must be one of: ${ALLOWED_ROLES.join(', ')}`,
   }),
 });
+

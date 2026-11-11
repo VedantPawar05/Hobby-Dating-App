@@ -178,7 +178,20 @@ function DashboardContent() {
                       {formatPrice(eventItem.price)}
                     </span>
 
-                    <div className="flex items-center space-x-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      {eventItem.endDateTime &&
+                        new Date(eventItem.endDateTime) <= new Date() &&
+                        (b.checkedIn ? (
+                          <Link href={`/events/${eventItem._id}/mixer`}>
+                            <Button variant="primary" size="sm">
+                              24h Mixer
+                            </Button>
+                          </Link>
+                        ) : (
+                          <span className="text-xs font-medium text-amber-800 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-md">
+                            QR Check-in Required
+                          </span>
+                        ))}
                       <Link href={`/events/${eventItem._id}`}>
                         <Button variant="outline" size="sm">
                           Details

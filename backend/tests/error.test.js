@@ -19,7 +19,7 @@ describe('Centralized Error Middleware', () => {
 
   it('handles Zod validation errors with 400 and structured fields', async () => {
     const dummySchema = z.object({
-      age: z.number({ required_error: 'Age is required' }),
+      age: z.number({ error: 'Age is required' }),
     });
 
     let zodErr;
@@ -85,4 +85,5 @@ describe('Centralized Error Middleware', () => {
     expect(res.body.message).toBe('Unexpected crash');
   });
 });
+
 

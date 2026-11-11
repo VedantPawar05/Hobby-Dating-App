@@ -1,29 +1,31 @@
 import { z } from 'zod';
 import { GENDERS } from '../constants/user.constants.js';
 
+export const strongPasswordSchema = z
+  .string({ error: 'Password is required' })
+  .min(8, 'Password must be at least 8 characters')
+  .max(128, 'Password cannot exceed 128 characters')
+  .regex(
+    /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/,
+    'Password must contain at least one uppercase letter, one lowercase letter, and one number'
+  );
+
 export const registerSchema = z
   .object({
     fullName: z
-      .string({ required_error: 'Full name is required' })
+      .string({ error: 'Full name is required' })
       .trim()
       .min(2, 'Full name must be at least 2 characters')
       .max(100, 'Full name cannot exceed 100 characters'),
     email: z
-      .string({ required_error: 'Email is required' })
+      .string({ error: 'Email is required' })
       .trim()
       .toLowerCase()
       .email('Please provide a valid email address'),
-    password: z
-      .string({ required_error: 'Password is required' })
-      .min(8, 'Password must be at least 8 characters')
-      .max(128, 'Password cannot exceed 128 characters')
-      .regex(
-        /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/,
-        'Password must contain at least one uppercase letter, one lowercase letter, and one number'
-      ),
+    password: strongPasswordSchema,
     dateOfBirth: z
       .union([z.string(), z.date()], {
-        required_error: 'Date of birth is required',
+        error: 'Date of birth is required',
       })
       .refine((val) => !isNaN(new Date(val).getTime()), {
         message: 'Invalid date format for date of birth',
@@ -39,14 +41,14 @@ export const registerSchema = z
       ),
     gender: z
       .enum(GENDERS, {
-        errorMap: () => ({ message: `Gender must be one of: ${GENDERS.join(', ')}` }),
+        error: () => `Gender must be one of: ${GENDERS.join(', ')}`,
       })
       .or(z.literal(''))
       .optional()
       .nullable()
       .transform((val) => (val === '' ? null : val)),
     city: z
-      .string({ required_error: 'City is required' })
+      .string({ error: 'City is required' })
       .trim()
       .min(2, 'City must be at least 2 characters')
       .max(100, 'City cannot exceed 100 characters'),
@@ -63,11 +65,26 @@ export const registerSchema = z
 
 export const loginSchema = z.object({
   email: z
-    .string({ required_error: 'Email is required' })
+    .string({ error: 'Email is required' })
     .trim()
     .toLowerCase()
     .email('Please provide a valid email address'),
   password: z
-    .string({ required_error: 'Password is required' })
+    .string({ error: 'Password is required' })
     .min(1, 'Password cannot be empty'),
 });
+
+export const changePasswordSchema = z
+  .object({
+    currentPassword: z
+      .string({ error: 'Current password is required' })
+      .min(1, 'Current password is required'),
+    newPassword: strongPasswordSchema,
+  })
+  .strict('Unrecognized fields provided')
+  .refine((data) => data.currentPassword !== data.newPassword, {
+    message: 'New password must be different from your current password',
+    path: ['newPassword'],
+  });
+
+

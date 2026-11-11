@@ -181,6 +181,11 @@ export default function EventDetailsPage() {
   const availableSlots = getAvailableSlots(bookedCount, capacity);
   const isFull = availableSlots === 0;
   const isPast = new Date(startDateTime) <= new Date();
+  const hasEnded = endDateTime ? new Date(endDateTime) <= new Date() : false;
+  const mixerExpiresAtMs = endDateTime
+    ? new Date(endDateTime).getTime() + 24 * 60 * 60 * 1000
+    : 0;
+  const isMixerWindowActive = hasEnded && Date.now() < mixerExpiresAtMs;
   const isOwner = user && organizer?._id === user._id;
 
   return (
@@ -303,11 +308,28 @@ export default function EventDetailsPage() {
                   You are the organizer of this event
                 </div>
               ) : existingBooking ? (
-                <div className="flex items-center gap-3">
+                <div className="flex flex-wrap items-center gap-3">
                   <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-3.5 py-2 rounded-lg flex items-center">
                     <CheckCircle2 className="w-4 h-4 mr-1.5 text-emerald-600" />
                     Spot Confirmed
                   </span>
+                  {hasEnded && existingBooking.checkedIn && (
+                    <Link href={`/events/${eventId}/mixer`}>
+                      <Button
+                        variant={isMixerWindowActive ? 'primary' : 'outline'}
+                        size="md"
+                      >
+                        <Clock className="w-4 h-4 mr-1.5" />
+                        {isMixerWindowActive ? 'Open 24h Mixer' : 'Mixer Closed'}
+                      </Button>
+                    </Link>
+                  )}
+                  {hasEnded && !existingBooking.checkedIn && (
+                    <span className="text-xs font-medium text-amber-800 bg-amber-50 border border-amber-200 px-3 py-2 rounded-lg flex items-center">
+                      <AlertCircle className="w-3.5 h-3.5 mr-1.5 text-amber-600" />
+                      QR check-in required for 24h Mixer
+                    </span>
+                  )}
                   <Button
                     variant="outline"
                     size="md"

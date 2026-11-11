@@ -1,4 +1,5 @@
 import { ApiResponse } from '../utils/api-response.js';
+import { USER_ROLES } from '../constants/user.constants.js';
 
 /**
  * Middleware factory for role-based access control.
@@ -24,4 +25,9 @@ export function requireRoles(...allowedRoles) {
     next();
   };
 }
+
+/**
+ * Authorization middleware restricting access exclusively to admin accounts.
+ */
+export const requireAdmin = requireRoles(USER_ROLES.ADMIN);
 

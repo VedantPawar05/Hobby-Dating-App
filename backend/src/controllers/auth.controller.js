@@ -79,4 +79,21 @@ export class AuthController {
       next(error);
     }
   }
+
+  /**
+   * Changes the authenticated user's password.
+   */
+  static async changePassword(req, res, next) {
+    try {
+      const user = await AuthService.changePassword(req.user._id, req.body);
+
+      return ApiResponse.success(res, {
+        statusCode: 200,
+        message: 'Password updated successfully',
+        data: { user },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
 }

@@ -12,14 +12,18 @@ const envSchema = z
     NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
     PORT: z.coerce.number().int().min(1).max(65535).default(5000),
     MONGODB_URI: z.string({
-      required_error: 'MONGODB_URI is required',
+      error: 'MONGODB_URI is required',
     }).min(1, 'MONGODB_URI cannot be empty'),
     CLIENT_URL: z.string().min(1, 'CLIENT_URL cannot be empty').default('http://localhost:3000'),
     JWT_SECRET: z.string({
-      required_error: 'JWT_SECRET is required',
+      error: 'JWT_SECRET is required',
     }).min(16, 'JWT_SECRET must be at least 16 characters').default(DEV_JWT_SECRET),
     JWT_EXPIRES_IN: z.string().default('15m'),
     COOKIE_SECRET: z.string().min(16, 'COOKIE_SECRET must be at least 16 characters').default(DEV_COOKIE_SECRET),
+    ADMIN_EMAIL: z.string().trim().toLowerCase().optional(),
+    ADMIN_PASSWORD: z.string().optional(),
+    ADMIN_FULL_NAME: z.string().trim().optional(),
+    ADMIN_CITY: z.string().trim().optional(),
   })
   .superRefine((data, ctx) => {
     if (data.NODE_ENV === 'production') {
@@ -49,7 +53,7 @@ export function validateEnv(rawEnv = process.env) {
   const result = envSchema.safeParse(rawEnv);
 
   if (!result.success) {
-    const formattedErrors = result.error.errors
+    const formattedErrors = result.error.issues
       .map((err) => `  - ${err.path.join('.')}: ${err.message}`)
       .join('\n');
 
@@ -65,3 +69,5 @@ if (process.env.NODE_ENV === 'test' && !process.env.MONGODB_URI) {
 }
 
 export const env = validateEnv(process.env);
+
+

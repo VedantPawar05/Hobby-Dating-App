@@ -28,6 +28,13 @@ export const authService = {
   async getCurrentUser() {
     return api.get('/auth/me');
   },
+
+  /**
+   * Updates the authenticated user's password.
+   */
+  async changePassword(payload) {
+    return api.patch('/auth/password', payload);
+  },
 };
 
 export default authService;

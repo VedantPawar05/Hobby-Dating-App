@@ -8,19 +8,17 @@ import {
 export const createEventSchema = z
   .object({
     title: z
-      .string({ required_error: 'Event title is required' })
+      .string({ error: 'Event title is required' })
       .trim()
       .min(3, 'Title must be at least 3 characters')
       .max(120, 'Title cannot exceed 120 characters'),
     description: z
-      .string({ required_error: 'Description is required' })
+      .string({ error: 'Description is required' })
       .trim()
       .min(10, 'Description must be at least 10 characters')
       .max(2000, 'Description cannot exceed 2000 characters'),
     category: z.enum(EVENT_CATEGORIES, {
-      errorMap: () => ({
-        message: `Category must be one of: ${EVENT_CATEGORIES.join(', ')}`,
-      }),
+      error: () => `Category must be one of: ${EVENT_CATEGORIES.join(', ')}`,
     }),
     activityType: z.string().trim().max(100).optional().default(''),
     coverImage: z
@@ -30,12 +28,12 @@ export const createEventSchema = z
       .nullable(),
     location: z.object({
       city: z
-        .string({ required_error: 'City is required' })
+        .string({ error: 'City is required' })
         .trim()
         .min(2, 'City must be at least 2 characters')
         .max(100, 'City cannot exceed 100 characters'),
       address: z
-        .string({ required_error: 'Address is required' })
+        .string({ error: 'Address is required' })
         .trim()
         .min(3, 'Address must be at least 3 characters')
         .max(200, 'Address cannot exceed 200 characters'),
@@ -43,19 +41,19 @@ export const createEventSchema = z
       longitude: z.number().min(-180).max(180).optional().nullable(),
     }),
     startDateTime: z
-      .string({ required_error: 'Start date and time is required' })
+      .string({ error: 'Start date and time is required' })
       .refine((val) => !isNaN(Date.parse(val)), {
         message: 'Invalid start date and time format',
       })
       .transform((val) => new Date(val)),
     endDateTime: z
-      .string({ required_error: 'End date and time is required' })
+      .string({ error: 'End date and time is required' })
       .refine((val) => !isNaN(Date.parse(val)), {
         message: 'Invalid end date and time format',
       })
       .transform((val) => new Date(val)),
     capacity: z
-      .number({ required_error: 'Capacity is required' })
+      .number({ error: 'Capacity is required' })
       .int('Capacity must be an integer')
       .min(1, 'Capacity must be at least 1 slot'),
     price: z
@@ -64,7 +62,7 @@ export const createEventSchema = z
       .optional()
       .default(0),
     status: z
-      .enum([EVENT_STATUSES.DRAFT, EVENT_STATUSES.PUBLISHED])
+      .enum([EVENT_STATUSES.DRAFT, EVENT_STATUSES.PENDING, EVENT_STATUSES.PUBLISHED])
       .optional()
       .default(EVENT_STATUSES.DRAFT),
   })
@@ -138,4 +136,6 @@ export const eventQuerySchema = z.object({
   sortBy: z.enum(['startDateTime', 'createdAt', 'price']).default('startDateTime'),
   sortOrder: z.enum(['asc', 'desc']).default('asc'),
 });
+
+
 

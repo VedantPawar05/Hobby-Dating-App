@@ -10,10 +10,11 @@ import LoadingState from '../../../components/common/LoadingState.js';
 import { AlertCircle, Lock } from 'lucide-react';
 
 function LoginForm() {
-  const { login, isAuthenticated } = useAuth();
+  const { user, login, isAuthenticated } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const redirectUrl = searchParams.get('redirect') || '/events';
+  const explicitRedirect = searchParams.get('redirect');
+  const getDefaultDestination = (role) => (role === 'admin' ? '/admin' : '/events');
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -22,10 +23,10 @@ function LoginForm() {
 
   // If already authenticated, redirect immediately
   useEffect(() => {
-    if (isAuthenticated) {
-      router.replace(redirectUrl);
+    if (isAuthenticated && user) {
+      router.replace(explicitRedirect || getDefaultDestination(user.role));
     }
-  }, [isAuthenticated, redirectUrl, router]);
+  }, [isAuthenticated, user, explicitRedirect, router]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -33,8 +34,9 @@ function LoginForm() {
     setLoading(true);
 
     try {
-      await login(email, password);
-      router.replace(redirectUrl);
+      const data = await login(email, password);
+      const destination = explicitRedirect || getDefaultDestination(data?.user?.role);
+      router.replace(destination);
     } catch (err) {
       setErrorMessage(
         err.message || 'Invalid email or password. Please try again.'

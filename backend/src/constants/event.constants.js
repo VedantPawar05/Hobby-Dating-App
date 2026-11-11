@@ -17,7 +17,9 @@ export const EVENT_CATEGORIES = [
 
 export const EVENT_STATUSES = {
   DRAFT: 'draft',
+  PENDING: 'pending',
   PUBLISHED: 'published',
+  REJECTED: 'rejected',
   CANCELLED: 'cancelled',
   COMPLETED: 'completed',
 };
