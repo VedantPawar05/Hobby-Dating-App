@@ -76,4 +76,29 @@ describe('Environment Validation (validateEnv)', () => {
 
     expect(() => validateEnv(raw)).toThrowError(/Environment validation failed/);
   });
+
+  it('should fail fast in production if JWT_SECRET or COOKIE_SECRET are omitted', () => {
+    const raw = {
+      NODE_ENV: 'production',
+      MONGODB_URI: 'mongodb+srv://user:pass@cluster.mongodb.net/prod',
+    };
+
+    expect(() => validateEnv(raw)).toThrowError(/must be explicitly set in production/);
+  });
+
+  it('should pass in production when explicit secrets and Atlas URI are provided', () => {
+    const raw = {
+      NODE_ENV: 'production',
+      PORT: '10000',
+      MONGODB_URI: 'mongodb+srv://user:pass@cluster.mongodb.net/prod',
+      CLIENT_URL: 'https://hobby-dating.vercel.app',
+      JWT_SECRET: 'prod_jwt_secret_key_minimum_32_characters_long_12345',
+      COOKIE_SECRET: 'prod_cookie_secret_key_minimum_32_characters_long_67890',
+    };
+
+    const config = validateEnv(raw);
+    expect(config.NODE_ENV).toBe('production');
+    expect(config.PORT).toBe(10000);
+    expect(config.CLIENT_URL).toBe('https://hobby-dating.vercel.app');
+  });
 });

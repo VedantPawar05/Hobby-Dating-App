@@ -15,7 +15,9 @@ async function startServer() {
 
     server = app.listen(env.PORT, () => {
       console.log(`[Server] Application running in ${env.NODE_ENV} mode on port ${env.PORT}`);
-      console.log(`[Server] Health check available at http://localhost:${env.PORT}/api/health`);
+      if (env.NODE_ENV !== 'production') {
+        console.log(`[Server] Health check available at http://localhost:${env.PORT}/api/health`);
+      }
     });
   } catch (error) {
     console.error('[Server] Failed to initialize application:', error.message);

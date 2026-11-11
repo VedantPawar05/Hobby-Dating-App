@@ -36,7 +36,7 @@ export async function connectDatabase(uri = env.MONGODB_URI) {
 
   try {
     const connection = await mongoose.connect(uri, {
-      serverSelectionTimeoutMS: 5000,
+      serverSelectionTimeoutMS: env.NODE_ENV === 'test' ? 2000 : 10000,
     });
 
     console.log(`[Database] MongoDB successfully connected to ${safeUri}`);

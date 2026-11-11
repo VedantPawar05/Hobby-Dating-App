@@ -30,10 +30,11 @@ export function verifyToken(token) {
  * @returns {import('express').CookieOptions}
  */
 export function getAuthCookieOptions(maxAgeMs = 15 * 60 * 1000) {
+  const isProduction = env.NODE_ENV === 'production';
   return {
     httpOnly: true,
-    secure: env.NODE_ENV === 'production',
-    sameSite: env.NODE_ENV === 'production' ? 'strict' : 'lax',
+    secure: isProduction,
+    sameSite: isProduction ? 'none' : 'lax',
     maxAge: maxAgeMs,
   };
 }
@@ -44,9 +45,10 @@ export function getAuthCookieOptions(maxAgeMs = 15 * 60 * 1000) {
  * @returns {import('express').CookieOptions}
  */
 export function getClearCookieOptions() {
+  const isProduction = env.NODE_ENV === 'production';
   return {
     httpOnly: true,
-    secure: env.NODE_ENV === 'production',
-    sameSite: env.NODE_ENV === 'production' ? 'strict' : 'lax',
+    secure: isProduction,
+    sameSite: isProduction ? 'none' : 'lax',
   };
 }
