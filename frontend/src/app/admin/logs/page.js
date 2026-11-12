@@ -19,6 +19,7 @@ const ACTION_OPTIONS = [
   { value: 'approve_event', label: 'Approve Event' },
   { value: 'reject_event', label: 'Reject Event' },
   { value: 'cancel_event', label: 'Cancel Event' },
+  { value: 'cancel_booking', label: 'Cancel Booking' },
   { value: 'review_report', label: 'Review Report' },
   { value: 'resolve_report', label: 'Resolve Report' },
   { value: 'dismiss_report', label: 'Dismiss Report' },
@@ -170,6 +171,7 @@ export default function AdminModerationLogsPage() {
             <option value="">All Targets</option>
             <option value="user">Users</option>
             <option value="event">Events</option>
+            <option value="booking">Bookings</option>
             <option value="report">Reports</option>
           </select>
 
@@ -286,4 +288,3 @@ export default function AdminModerationLogsPage() {
     </div>
   );
 }
-

@@ -31,6 +31,9 @@ export const updateProfileSchema = z
       .string()
       .trim()
       .url('Profile picture must be a valid URL')
+      .refine((val) => /^https?:\/\//i.test(val), {
+        message: 'Profile picture URL must use HTTP or HTTPS',
+      })
       .or(z.literal(''))
       .optional()
       .nullable()
@@ -57,9 +60,16 @@ export const updateProfileSchema = z
   })
   .strict('Unrecognized fields are not permitted in profile updates');
 
-export const updateUserRoleSchema = z.object({
-  role: z.enum(ALLOWED_ROLES, {
-    error: () => `Role must be one of: ${ALLOWED_ROLES.join(', ')}`,
-  }),
-});
-
+export const updateUserRoleSchema = z
+  .object({
+    role: z.enum(ALLOWED_ROLES, {
+      error: () => `Role must be one of: ${ALLOWED_ROLES.join(', ')}`,
+    }),
+    reason: z
+      .string()
+      .trim()
+      .max(500, 'Reason cannot exceed 500 characters')
+      .optional()
+      .default(''),
+  })
+  .strict('Unrecognized fields provided for role update');

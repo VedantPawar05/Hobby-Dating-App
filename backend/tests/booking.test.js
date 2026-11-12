@@ -301,5 +301,79 @@ describe('Booking API & Capacity Lifecycle (/api/bookings)', () => {
       expect(res.body.data.pagination.total).toBe(1);
     });
   });
-});
 
+  describe('QR Check-in Ticket (GET /api/bookings/:bookingId/ticket)', () => {
+    const bookingId = new mongoose.Types.ObjectId().toString();
+
+    it('generates QR code data URL and payload for the booking owner', async () => {
+      vi.spyOn(User, 'findById').mockResolvedValue(user);
+
+      const confirmedBooking = new Booking({
+        _id: bookingId,
+        user: userId,
+        event: baseEvent,
+        status: 'confirmed',
+        checkInCode: 'RCZ-TICKET01',
+        bookedAt: new Date(),
+      });
+
+      vi.spyOn(Booking, 'findById').mockReturnValue({
+        populate: vi.fn().mockResolvedValue(confirmedBooking),
+      });
+
+      const res = await request(app)
+        .get(`/api/bookings/${bookingId}/ticket`)
+        .set('Authorization', `Bearer ${userToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.checkInCode).toBe('RCZ-TICKET01');
+      expect(res.body.data.qrCodeDataUrl).toMatch(/^data:image\/png;base64,/);
+      expect(res.body.data.qrPayload).toMatchObject({
+        type: 'hobby_dating_checkin',
+        bookingId,
+        eventId,
+        checkInCode: 'RCZ-TICKET01',
+      });
+    });
+
+    it('rejects ticket access for non-owners, cancelled bookings, and unauthenticated requests', async () => {
+      const unauthRes = await request(app).get(`/api/bookings/${bookingId}/ticket`);
+      expect(unauthRes.status).toBe(401);
+
+      vi.spyOn(User, 'findById').mockResolvedValue(anotherUser);
+      const ownerBooking = new Booking({
+        _id: bookingId,
+        user: userId,
+        event: baseEvent,
+        status: 'confirmed',
+        checkInCode: 'RCZ-TICKET01',
+      });
+      vi.spyOn(Booking, 'findById').mockReturnValue({
+        populate: vi.fn().mockResolvedValue(ownerBooking),
+      });
+
+      const forbiddenRes = await request(app)
+        .get(`/api/bookings/${bookingId}/ticket`)
+        .set('Authorization', `Bearer ${anotherUserToken}`);
+      expect(forbiddenRes.status).toBe(403);
+
+      vi.spyOn(User, 'findById').mockResolvedValue(user);
+      const cancelledBooking = new Booking({
+        _id: bookingId,
+        user: userId,
+        event: baseEvent,
+        status: 'cancelled',
+        checkInCode: 'RCZ-TICKET01',
+      });
+      vi.spyOn(Booking, 'findById').mockReturnValue({
+        populate: vi.fn().mockResolvedValue(cancelledBooking),
+      });
+
+      const cancelledRes = await request(app)
+        .get(`/api/bookings/${bookingId}/ticket`)
+        .set('Authorization', `Bearer ${userToken}`);
+      expect(cancelledRes.status).toBe(400);
+    });
+  });
+});

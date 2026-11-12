@@ -120,13 +120,13 @@ export default function AdminReportsPage() {
         </p>
       </div>
 
-      {/* Transparent Dependency Notice */}
-      <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900 flex items-start gap-2.5">
-        <Info className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
+      {/* Active Reporting Notice */}
+      <div className="p-3.5 rounded-xl bg-surface-100 border border-surface-200 text-xs text-slate-700 flex items-start gap-2.5">
+        <Info className="w-4 h-4 text-brand-700 shrink-0 mt-0.5" />
         <div>
-          <span className="font-semibold">Admin-Side Reporting Foundation Active:</span>{' '}
+          <span className="font-semibold">Moderation Reporting Pipeline Active:</span>{' '}
           {dependencyNote ||
-            'Public user-facing report submission endpoints have not been built yet. Reports submitted once that module ships will appear here automatically, while all user and event moderation actions are logged below right now.'}
+            'Member-submitted reports for suspicious users and events appear below for triage and resolution.'}
         </div>
       </div>
 
@@ -190,6 +190,14 @@ export default function AdminReportsPage() {
                         </span>
                       </div>
                       <p className="font-semibold text-sm text-surface-900">{report.reason}</p>
+                      {report.targetSummary && (
+                        <p className="text-xs font-medium text-brand-800">
+                          Target:{' '}
+                          {report.targetType === 'event'
+                            ? `${report.targetSummary.title} (${report.targetSummary.status})`
+                            : `${report.targetSummary.fullName} (${report.targetSummary.email})`}
+                        </p>
+                      )}
                       {report.details && (
                         <p className="text-xs text-slate-600">{report.details}</p>
                       )}
@@ -199,7 +207,23 @@ export default function AdminReportsPage() {
                     </div>
 
                     {['open', 'under_review'].includes(report.status) && (
-                      <div className="flex items-center gap-2 shrink-0">
+                      <div className="flex flex-wrap items-center gap-2 shrink-0">
+                        {report.status === 'open' && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() =>
+                              setDialogState({
+                                open: true,
+                                mode: 'under_review',
+                                report,
+                                submitting: false,
+                              })
+                            }
+                          >
+                            Review
+                          </Button>
+                        )}
                         <Button
                           variant="primary"
                           size="sm"
@@ -302,10 +326,20 @@ export default function AdminReportsPage() {
       <ConfirmDialog
         isOpen={dialogState.open}
         title={
-          dialogState.mode === 'resolved' ? 'Resolve this report?' : 'Dismiss this report?'
+          dialogState.mode === 'resolved'
+            ? 'Resolve this report?'
+            : dialogState.mode === 'under_review'
+              ? 'Mark report as Under Review?'
+              : 'Dismiss this report?'
         }
         description="Update the report status and record resolution notes in the moderation log."
-        confirmLabel={dialogState.mode === 'resolved' ? 'Mark Resolved' : 'Dismiss Report'}
+        confirmLabel={
+          dialogState.mode === 'resolved'
+            ? 'Mark Resolved'
+            : dialogState.mode === 'under_review'
+              ? 'Mark Under Review'
+              : 'Dismiss Report'
+        }
         confirmVariant={dialogState.mode === 'resolved' ? 'primary' : 'secondary'}
         showReason
         requireReason={false}
@@ -320,4 +354,3 @@ export default function AdminReportsPage() {
     </div>
   );
 }
-

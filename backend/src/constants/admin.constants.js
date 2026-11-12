@@ -9,6 +9,7 @@ export const MODERATION_ACTIONS = {
   APPROVE_EVENT: 'approve_event',
   REJECT_EVENT: 'reject_event',
   CANCEL_EVENT: 'cancel_event',
+  CANCEL_BOOKING: 'cancel_booking',
   REVIEW_REPORT: 'review_report',
   RESOLVE_REPORT: 'resolve_report',
   DISMISS_REPORT: 'dismiss_report',
@@ -19,6 +20,7 @@ export const ALLOWED_MODERATION_ACTIONS = Object.values(MODERATION_ACTIONS);
 export const MODERATION_TARGET_TYPES = {
   USER: 'user',
   EVENT: 'event',
+  BOOKING: 'booking',
   REPORT: 'report',
 };
 
@@ -39,4 +41,3 @@ export const REPORT_STATUSES = {
 };
 
 export const ALLOWED_REPORT_STATUSES = Object.values(REPORT_STATUSES);
-

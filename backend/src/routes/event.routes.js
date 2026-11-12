@@ -1,7 +1,8 @@
 import { Router } from 'express';
 import { EventController } from '../controllers/event.controller.js';
-import { authenticate } from '../middlewares/auth.middleware.js';
+import { authenticate, optionalAuthenticate } from '../middlewares/auth.middleware.js';
 import { requireRoles } from '../middlewares/role.middleware.js';
+import { checkInRateLimiter } from '../middlewares/rate-limit.middleware.js';
 import {
   validateRequest,
   validateQuery,
@@ -11,6 +12,9 @@ import {
   createEventSchema,
   updateEventSchema,
   eventQuerySchema,
+  organizerEventsQuerySchema,
+  attendeesQuerySchema,
+  checkInSchema,
 } from '../validators/event.validator.js';
 import { USER_ROLES } from '../constants/user.constants.js';
 
@@ -25,26 +29,26 @@ router.post(
   EventController.createEvent
 );
 
-// Organizer: Get my created events
+// Organizer: Get my created events & stats
 router.get(
   '/organizer/my-events',
   authenticate,
   requireRoles(USER_ROLES.ORGANIZER, USER_ROLES.ADMIN),
+  validateQuery(organizerEventsQuerySchema),
   EventController.getOrganizerEvents
 );
 
-// Public / Authenticated: Event Discovery
+// Public: Event Discovery (published upcoming events only)
 router.get(
   '/',
-  authenticate,
   validateQuery(eventQuerySchema),
   EventController.discoverEvents
 );
 
-// Public / Authenticated: Get event details
+// Public / Owner-aware: Get event details
 router.get(
   '/:eventId',
-  authenticate,
+  optionalAuthenticate,
   validateObjectId('eventId'),
   EventController.getEventById
 );
@@ -68,14 +72,25 @@ router.delete(
   EventController.deleteEvent
 );
 
+// Organizer / Admin: Verify QR / check-in code for an event attendee
+router.post(
+  '/:eventId/check-in',
+  authenticate,
+  requireRoles(USER_ROLES.ORGANIZER, USER_ROLES.ADMIN),
+  checkInRateLimiter,
+  validateObjectId('eventId'),
+  validateRequest(checkInSchema),
+  EventController.checkInAttendee
+);
+
 // Organizer / Admin: Get attendee list
 router.get(
   '/:eventId/attendees',
   authenticate,
   requireRoles(USER_ROLES.ORGANIZER, USER_ROLES.ADMIN),
   validateObjectId('eventId'),
+  validateQuery(attendeesQuerySchema),
   EventController.getAttendees
 );
 
 export default router;
-

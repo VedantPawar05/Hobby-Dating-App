@@ -58,3 +58,38 @@ export async function authenticate(req, res, next) {
   }
 }
 
+/**
+ * Optional authentication middleware for public endpoints that adjust visibility
+ * when an authenticated owner/admin is present, without blocking anonymous visitors.
+ * @param {import('express').Request} req
+ * @param {import('express').Response} res
+ * @param {import('express').NextFunction} next
+ */
+export async function optionalAuthenticate(req, res, next) {
+  let token = null;
+
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    token = authHeader.split(' ')[1].trim();
+  }
+
+  if (!token && req.cookies && req.cookies.access_token) {
+    token = req.cookies.access_token;
+  }
+
+  if (!token) {
+    return next();
+  }
+
+  try {
+    const decoded = verifyToken(token);
+    const user = await User.findById(decoded.id);
+    if (user && user.isActive) {
+      req.user = user;
+    }
+  } catch {
+    // Public routes continue anonymously if optional token is expired or invalid
+  }
+
+  return next();
+}

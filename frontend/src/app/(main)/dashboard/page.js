@@ -5,34 +5,53 @@ import Link from 'next/link';
 import ProtectedRoute from '../../../components/auth/ProtectedRoute.js';
 import { useAuth } from '../../../context/AuthContext.js';
 import { eventService } from '../../../services/event.service.js';
+import reportService from '../../../services/report.service.js';
 import Card from '../../../components/common/Card.js';
 import Button from '../../../components/common/Button.js';
 import LoadingState from '../../../components/common/LoadingState.js';
 import EmptyState from '../../../components/common/EmptyState.js';
+import StatusBadge from '../../../components/admin/StatusBadge.js';
 import {
   Calendar,
   MapPin,
   Compass,
   ArrowRight,
   CheckCircle2,
-  XCircle,
   AlertCircle,
+  QrCode,
+  X,
+  Flag,
 } from 'lucide-react';
 import { formatDateTime, formatPrice } from '../../../utils/formatters.js';
 
 function DashboardContent() {
   const { user } = useAuth();
   const [bookings, setBookings] = useState([]);
+  const [myReports, setMyReports] = useState([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(null);
   const [feedback, setFeedback] = useState({ type: null, message: '' });
 
-  const fetchBookings = useCallback(async () => {
+  // QR Ticket Modal state
+  const [ticketModal, setTicketModal] = useState({
+    open: false,
+    loading: false,
+    error: '',
+    data: null,
+  });
+
+  const fetchHubData = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await eventService.getMyBookings({ limit: 20 });
-      if (res?.data?.bookings) {
-        setBookings(res.data.bookings);
+      const [bookingsRes, reportsRes] = await Promise.all([
+        eventService.getMyBookings({ limit: 20 }),
+        reportService.getMyReports({ limit: 10 }).catch(() => null),
+      ]);
+      if (bookingsRes?.data?.bookings) {
+        setBookings(bookingsRes.data.bookings);
+      }
+      if (reportsRes?.data?.reports) {
+        setMyReports(reportsRes.data.reports);
       }
     } catch {
       // Handle gracefully
@@ -42,8 +61,28 @@ function DashboardContent() {
   }, []);
 
   useEffect(() => {
-    fetchBookings();
-  }, [fetchBookings]);
+    fetchHubData();
+  }, [fetchHubData]);
+
+  const handleOpenTicket = async (bookingId) => {
+    setTicketModal({ open: true, loading: true, error: '', data: null });
+    try {
+      const res = await eventService.getBookingTicket(bookingId);
+      setTicketModal({
+        open: true,
+        loading: false,
+        error: '',
+        data: res?.data || null,
+      });
+    } catch (err) {
+      setTicketModal({
+        open: true,
+        loading: false,
+        error: err.message || 'Unable to generate QR check-in ticket.',
+        data: null,
+      });
+    }
+  };
 
   const handleCancelBooking = async (bookingId) => {
     setActionLoading(bookingId);
@@ -55,7 +94,7 @@ function DashboardContent() {
         type: 'success',
         message: 'Booking cancelled successfully.',
       });
-      fetchBookings();
+      fetchHubData();
     } catch (err) {
       setFeedback({
         type: 'error',
@@ -81,16 +120,25 @@ function DashboardContent() {
             Welcome, {user?.fullName || 'Runner'}!
           </h1>
           <p className="text-sm text-brand-100 max-w-lg mt-1">
-            Track your upcoming run clubs, trail sessions, and hobby events.
+            Track your upcoming run clubs, QR entry passes, trail sessions, and hobby events.
           </p>
         </div>
 
-        <Link href="/events">
-          <Button variant="secondary" size="md" className="shrink-0 font-semibold">
-            <Compass className="w-4 h-4 mr-1.5" />
-            Discover New Activities
-          </Button>
-        </Link>
+        <div className="flex flex-wrap gap-2 shrink-0">
+          {(user?.role === 'organizer' || user?.role === 'admin') && (
+            <Link href="/organizer">
+              <Button variant="outline" size="md" className="bg-white/10 text-white border-white/30 hover:bg-white/20">
+                Organizer Studio
+              </Button>
+            </Link>
+          )}
+          <Link href="/events">
+            <Button variant="secondary" size="md" className="shrink-0 font-semibold">
+              <Compass className="w-4 h-4 mr-1.5" />
+              Discover New Activities
+            </Button>
+          </Link>
+        </div>
       </div>
 
       {/* Feedback banner */}
@@ -143,14 +191,21 @@ function DashboardContent() {
               return (
                 <Card key={b._id} className="p-5 flex flex-col justify-between space-y-4">
                   <div className="space-y-2">
-                    <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-start justify-between gap-2 flex-wrap">
                       <span className="text-xs font-bold uppercase tracking-wider text-brand-700 bg-brand-50 px-2.5 py-0.5 rounded-full">
                         {eventItem.category}
                       </span>
-                      <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md flex items-center">
-                        <CheckCircle2 className="w-3 h-3 mr-1" />
-                        Confirmed
-                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md flex items-center">
+                          <CheckCircle2 className="w-3 h-3 mr-1" />
+                          Confirmed
+                        </span>
+                        {b.checkedIn && (
+                          <span className="text-xs font-semibold text-brand-800 bg-brand-50 border border-brand-200 px-2 py-0.5 rounded-md">
+                            Checked In
+                          </span>
+                        )}
+                      </div>
                     </div>
 
                     <Link href={`/events/${eventItem._id}`}>
@@ -173,12 +228,21 @@ function DashboardContent() {
                     </div>
                   </div>
 
-                  <div className="pt-3 border-t border-surface-100 flex items-center justify-between">
+                  <div className="pt-3 border-t border-surface-100 flex flex-wrap items-center justify-between gap-2">
                     <span className="text-xs font-bold text-surface-900">
                       {formatPrice(eventItem.price)}
                     </span>
 
                     <div className="flex flex-wrap items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleOpenTicket(b._id)}
+                      >
+                        <QrCode className="w-3.5 h-3.5 mr-1.5" />
+                        QR Ticket
+                      </Button>
+
                       {eventItem.endDateTime &&
                         new Date(eventItem.endDateTime) <= new Date() &&
                         (b.checkedIn ? (
@@ -192,20 +256,23 @@ function DashboardContent() {
                             QR Check-in Required
                           </span>
                         ))}
+
                       <Link href={`/events/${eventItem._id}`}>
                         <Button variant="outline" size="sm">
                           Details
                         </Button>
                       </Link>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        loading={actionLoading === b._id}
-                        onClick={() => handleCancelBooking(b._id)}
-                        className="text-red-600 hover:bg-red-50"
-                      >
-                        Cancel
-                      </Button>
+                      {!b.checkedIn && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          loading={actionLoading === b._id}
+                          onClick={() => handleCancelBooking(b._id)}
+                          className="text-red-600 hover:bg-red-50"
+                        >
+                          Cancel
+                        </Button>
+                      )}
                     </div>
                   </div>
                 </Card>
@@ -215,7 +282,7 @@ function DashboardContent() {
         )}
       </div>
 
-      {/* Cancelled Bookings Accordion/List if any */}
+      {/* Cancelled Bookings List */}
       {pastBookings.length > 0 && (
         <div className="pt-6 border-t border-surface-200 space-y-3">
           <h3 className="text-sm font-bold text-surface-600 uppercase tracking-wider">
@@ -243,6 +310,112 @@ function DashboardContent() {
                 )}
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* User's Submitted Safety Reports */}
+      {myReports.length > 0 && (
+        <div className="pt-6 border-t border-surface-200 space-y-3">
+          <h3 className="text-sm font-bold text-surface-600 uppercase tracking-wider flex items-center gap-1.5">
+            <Flag className="w-3.5 h-3.5 text-rose-500" />
+            <span>My Submitted Reports ({myReports.length})</span>
+          </h3>
+          <div className="space-y-2">
+            {myReports.map((rep) => (
+              <div
+                key={rep._id}
+                className="p-3.5 bg-white border border-surface-200 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs"
+              >
+                <div>
+                  <p className="font-semibold text-surface-900">{rep.reason}</p>
+                  <p className="text-surface-500 mt-0.5">
+                    Target: <span className="capitalize">{rep.targetType}</span> • Submitted{' '}
+                    {formatDateTime(rep.createdAt)}
+                  </p>
+                </div>
+                <StatusBadge value={rep.status} />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* QR Ticket Modal */}
+      {ticketModal.open && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4"
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="bg-white border border-surface-200 rounded-2xl max-w-md w-full shadow-xl overflow-hidden">
+            <div className="px-6 py-4 border-b border-surface-100 flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <QrCode className="w-5 h-5 text-brand-700" />
+                <h3 className="text-base font-bold text-surface-900">Event Check-In Pass</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setTicketModal({ open: false, loading: false, error: '', data: null })}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-surface-100"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-6">
+              {ticketModal.loading ? (
+                <LoadingState message="Generating your QR check-in ticket..." />
+              ) : ticketModal.error ? (
+                <div className="p-4 rounded-xl bg-red-50 border border-red-200 text-red-800 text-sm">
+                  {ticketModal.error}
+                </div>
+              ) : ticketModal.data ? (
+                <div className="space-y-4 text-center">
+                  <div>
+                    <h4 className="font-bold text-lg text-surface-900">
+                      {ticketModal.data.booking?.event?.title}
+                    </h4>
+                    <p className="text-xs text-slate-600 mt-0.5">
+                      {formatDateTime(ticketModal.data.booking?.event?.startDateTime)}
+                    </p>
+                  </div>
+
+                  {ticketModal.data.qrCodeDataUrl && (
+                    <div className="inline-block p-3 bg-white border-2 border-surface-200 rounded-2xl shadow-xs">
+                      <img
+                        src={ticketModal.data.qrCodeDataUrl}
+                        alt="Event QR Check-In Code"
+                        className="w-52 h-52 mx-auto"
+                      />
+                    </div>
+                  )}
+
+                  <div className="p-3 bg-surface-50 border border-surface-200 rounded-xl space-y-1">
+                    <p className="text-[11px] uppercase tracking-wider font-semibold text-slate-500">
+                      Manual Check-In Code
+                    </p>
+                    <p className="font-mono text-base font-bold tracking-widest text-surface-900">
+                      {ticketModal.data.checkInCode}
+                    </p>
+                  </div>
+
+                  {ticketModal.data.booking?.checkedIn ? (
+                    <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold flex items-center justify-center gap-1.5">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                      <span>
+                        Checked in on {formatDateTime(ticketModal.data.booking.checkedInAt)}
+                      </span>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-slate-500">
+                      Present this QR code to the organizer upon arrival to unlock the 24-hour
+                      post-event mixer.
+                    </p>
+                  )}
+                </div>
+              ) : null}
+            </div>
           </div>
         </div>
       )}

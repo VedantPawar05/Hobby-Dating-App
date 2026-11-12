@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { BookingController } from '../controllers/booking.controller.js';
 import { authenticate } from '../middlewares/auth.middleware.js';
+import { bookingRateLimiter } from '../middlewares/rate-limit.middleware.js';
 import {
   validateQuery,
   validateObjectId,
@@ -17,10 +18,19 @@ router.get(
   BookingController.getMyBookings
 );
 
+// User: Get QR check-in ticket for a confirmed booking
+router.get(
+  '/:bookingId/ticket',
+  authenticate,
+  validateObjectId('bookingId'),
+  BookingController.getTicket
+);
+
 // User: Book an event
 router.post(
   '/:eventId',
   authenticate,
+  bookingRateLimiter,
   validateObjectId('eventId'),
   BookingController.createBooking
 );
@@ -34,4 +44,3 @@ router.delete(
 );
 
 export default router;
-

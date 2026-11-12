@@ -32,6 +32,10 @@ export const adminService = {
     return api.patch(`/admin/users/${userId}/reactivate`, { reason });
   },
 
+  async updateUserRole(userId, { role, reason = '' }) {
+    return api.patch(`/admin/users/${userId}/role`, { role, reason });
+  },
+
   async getOrganizers(params = {}) {
     return api.get('/admin/organizers', { params: cleanQuery(params) });
   },
@@ -75,7 +79,10 @@ export const adminService = {
   async getBookingDetails(bookingId) {
     return api.get(`/admin/bookings/${bookingId}`);
   },
+
+  async cancelBooking(bookingId, reason) {
+    return api.patch(`/admin/bookings/${bookingId}/cancel`, { reason });
+  },
 };
 
 export default adminService;
-

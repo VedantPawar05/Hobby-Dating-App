@@ -17,6 +17,7 @@ import {
   adminReportsQuerySchema,
   adminReviewReportSchema,
   adminModerationLogsQuerySchema,
+  adminUpdateRoleSchema,
 } from '../validators/admin.validator.js';
 
 const router = Router();
@@ -41,6 +42,12 @@ router.patch(
   validateObjectId('userId'),
   validateRequest(adminOptionalReasonSchema),
   AdminController.reactivateUser
+);
+router.patch(
+  '/users/:userId/role',
+  validateObjectId('userId'),
+  validateRequest(adminUpdateRoleSchema),
+  AdminController.updateUserRole
 );
 
 // Organizer Management
@@ -82,13 +89,18 @@ router.get(
   AdminController.listModerationLogs
 );
 
-// Booking Management (Read-only)
+// Booking Management
 router.get('/bookings', validateQuery(adminBookingsQuerySchema), AdminController.listBookings);
 router.get(
   '/bookings/:bookingId',
   validateObjectId('bookingId'),
   AdminController.getBookingDetails
 );
+router.patch(
+  '/bookings/:bookingId/cancel',
+  validateObjectId('bookingId'),
+  validateRequest(adminRequiredReasonSchema),
+  AdminController.cancelBooking
+);
 
 export default router;
-

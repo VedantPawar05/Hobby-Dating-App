@@ -1,7 +1,13 @@
+import crypto from 'crypto';
+import QRCode from 'qrcode';
 import { Booking } from '../models/booking.model.js';
 import { Event } from '../models/event.model.js';
 import { EVENT_STATUSES } from '../constants/event.constants.js';
 import { BOOKING_STATUSES } from '../constants/booking.constants.js';
+
+function createCheckInCode() {
+  return crypto.randomBytes(8).toString('hex').toUpperCase();
+}
 
 export class BookingService {
   /**
@@ -42,14 +48,13 @@ export class BookingService {
       throw error;
     }
 
-    // Check if user already has an active confirmed booking for this event
-    const existingConfirmed = await Booking.findOne({
+    // Check if user already has a booking record for this event
+    const existingBooking = await Booking.findOne({
       user: userId,
       event: eventId,
-      status: BOOKING_STATUSES.CONFIRMED,
     });
 
-    if (existingConfirmed) {
+    if (existingBooking && existingBooking.status === BOOKING_STATUSES.CONFIRMED) {
       const error = new Error('You have already booked this event');
       error.statusCode = 409;
       throw error;
@@ -81,13 +86,25 @@ export class BookingService {
       throw error;
     }
 
-    // Create the booking record. If duplicate key triggers, roll back the reserved slot.
+    // Reactivate cancelled booking cleanly or create a new confirmed booking record.
     try {
+      if (existingBooking && existingBooking.status === BOOKING_STATUSES.CANCELLED) {
+        existingBooking.status = BOOKING_STATUSES.CONFIRMED;
+        existingBooking.bookedAt = new Date();
+        existingBooking.cancelledAt = null;
+        existingBooking.checkedIn = false;
+        existingBooking.checkedInAt = null;
+        existingBooking.checkInCode = createCheckInCode();
+        await existingBooking.save();
+        return existingBooking;
+      }
+
       const booking = await Booking.create({
         user: userId,
         event: eventId,
         status: BOOKING_STATUSES.CONFIRMED,
         bookedAt: new Date(),
+        checkInCode: createCheckInCode(),
       });
 
       return booking;
@@ -194,6 +211,67 @@ export class BookingService {
         limit,
         totalPages: Math.ceil(total / limit) || 1,
       },
+    };
+  }
+
+  /**
+   * Generates QR check-in ticket data URL and payload for a confirmed booking owner.
+   */
+  static async getBookingTicket(userId, bookingId) {
+    const booking = await Booking.findById(bookingId).populate({
+      path: 'event',
+      select:
+        'title category activityType location startDateTime endDateTime status organizer',
+      populate: {
+        path: 'organizer',
+        select: 'fullName email city',
+      },
+    });
+
+    if (!booking) {
+      const error = new Error('Booking not found');
+      error.statusCode = 404;
+      throw error;
+    }
+
+    if (booking.user.toString() !== userId.toString()) {
+      const error = new Error('Forbidden: You can only access tickets for your own bookings');
+      error.statusCode = 403;
+      throw error;
+    }
+
+    if (booking.status === BOOKING_STATUSES.CANCELLED) {
+      const error = new Error('QR ticket is unavailable for a cancelled booking');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    if (!booking.checkInCode) {
+      booking.checkInCode = createCheckInCode();
+      await booking.save();
+    }
+
+    const eventId = booking.event?._id
+      ? booking.event._id.toString()
+      : booking.event?.toString();
+
+    const qrPayload = {
+      type: 'hobby_dating_checkin',
+      bookingId: booking._id.toString(),
+      eventId,
+      checkInCode: booking.checkInCode,
+    };
+
+    const qrCodeDataUrl = await QRCode.toDataURL(JSON.stringify(qrPayload), {
+      width: 280,
+      margin: 2,
+    });
+
+    return {
+      booking,
+      checkInCode: booking.checkInCode,
+      qrPayload,
+      qrCodeDataUrl,
     };
   }
 }

@@ -1,11 +1,11 @@
 'use client';
 
 import React from 'react';
-import { MapPin, Heart, CheckCircle2, Lock } from 'lucide-react';
+import { MapPin, Heart, CheckCircle2, Lock, Flag } from 'lucide-react';
 import Card from '../common/Card.js';
 import Button from '../common/Button.js';
 
-export function AttendeeCard({ attendee, tagging, disabled, onTag }) {
+export function AttendeeCard({ attendee, tagging, disabled, onTag, onReport }) {
   const {
     _id,
     fullName,
@@ -89,14 +89,25 @@ export function AttendeeCard({ attendee, tagging, disabled, onTag }) {
             Tag Privately
           </Button>
         )}
-        <p className="mt-2 text-[11px] text-slate-400 flex items-center justify-center">
-          <Lock className="w-3 h-3 mr-1 shrink-0" />
-          One-way tags are never revealed
-        </p>
+        <div className="mt-2 flex items-center justify-between text-[11px] text-slate-400">
+          <span className="flex items-center">
+            <Lock className="w-3 h-3 mr-1 shrink-0" />
+            One-way tags are never revealed
+          </span>
+          {onReport && (
+            <button
+              type="button"
+              onClick={() => onReport(attendee)}
+              className="inline-flex items-center text-slate-400 hover:text-rose-600 transition-colors font-medium"
+            >
+              <Flag className="w-3 h-3 mr-1" />
+              Report
+            </button>
+          )}
+        </div>
       </div>
     </Card>
   );
 }
 
 export default AttendeeCard;
-

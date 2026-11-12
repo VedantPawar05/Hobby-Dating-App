@@ -8,10 +8,15 @@ import Input from '../common/Input.js';
 import { Check, AlertCircle } from 'lucide-react';
 
 export function ProfileForm({ initialProfile, onProfileUpdated }) {
+  const formattedDob = initialProfile.dateOfBirth
+    ? new Date(initialProfile.dateOfBirth).toISOString().split('T')[0]
+    : '';
+
   const [formData, setFormData] = useState({
     fullName: initialProfile.fullName || '',
     city: initialProfile.city || '',
     gender: initialProfile.gender || '',
+    dateOfBirth: formattedDob,
     bio: initialProfile.bio || '',
     profilePicture: initialProfile.profilePicture || '',
     interests: initialProfile.interests?.join(', ') || '',
@@ -51,6 +56,9 @@ export function ProfileForm({ initialProfile, onProfileUpdated }) {
         profilePicture: formData.profilePicture.trim() || null,
         interests: formattedInterests,
       };
+      if (formData.dateOfBirth) {
+        payload.dateOfBirth = formData.dateOfBirth;
+      }
 
       const response = await userService.updateProfile(payload);
       if (response?.data?.profile) {
@@ -60,7 +68,10 @@ export function ProfileForm({ initialProfile, onProfileUpdated }) {
         }
       }
     } catch (err) {
-      setErrorMessage(err.message || 'Failed to update profile. Please try again.');
+      const firstValidation = err?.errors?.[0]?.message;
+      setErrorMessage(
+        firstValidation || err.message || 'Failed to update profile. Please try again.'
+      );
     } finally {
       setSaving(false);
     }
@@ -135,16 +146,27 @@ export function ProfileForm({ initialProfile, onProfileUpdated }) {
         </div>
       </div>
 
-      {/* Profile Picture URL */}
-      <Input
-        label="Profile Picture URL"
-        name="profilePicture"
-        type="url"
-        placeholder="https://example.com/avatar.jpg"
-        value={formData.profilePicture}
-        onChange={handleChange}
-        helperText="Direct image link (Unsplash, Cloudinary, etc.)"
-      />
+      {/* Date of Birth & Profile Picture URL */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <Input
+          label="Date of Birth"
+          name="dateOfBirth"
+          type="date"
+          value={formData.dateOfBirth}
+          onChange={handleChange}
+          helperText="Members must be at least 18 years old"
+        />
+
+        <Input
+          label="Profile Picture URL"
+          name="profilePicture"
+          type="url"
+          placeholder="https://example.com/avatar.jpg"
+          value={formData.profilePicture}
+          onChange={handleChange}
+          helperText="Direct HTTP/HTTPS image link"
+        />
+      </div>
 
       {/* Bio */}
       <div>

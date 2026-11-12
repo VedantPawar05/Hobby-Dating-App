@@ -11,6 +11,8 @@ import {
   MapPin,
   Info,
   AlertCircle,
+  Ban,
+  CheckCircle2,
 } from 'lucide-react';
 import adminService from '../../../services/admin.service.js';
 import Card from '../../../components/common/Card.js';
@@ -18,6 +20,7 @@ import Button from '../../../components/common/Button.js';
 import LoadingState from '../../../components/common/LoadingState.js';
 import ErrorState from '../../../components/common/ErrorState.js';
 import EmptyState from '../../../components/common/EmptyState.js';
+import ConfirmDialog from '../../../components/common/ConfirmDialog.js';
 import StatusBadge from '../../../components/admin/StatusBadge.js';
 import PaginationBar from '../../../components/admin/PaginationBar.js';
 import {
@@ -35,9 +38,16 @@ export default function AdminBookingsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [feedbackError, setFeedbackError] = useState('');
+  const [feedbackSuccess, setFeedbackSuccess] = useState('');
 
   const [selectedDetails, setSelectedDetails] = useState(null);
   const [detailsLoading, setDetailsLoading] = useState(false);
+
+  const [cancelDialog, setCancelDialog] = useState({
+    open: false,
+    booking: null,
+    submitting: false,
+  });
 
   const fetchBookings = useCallback(async () => {
     setLoading(true);
@@ -79,6 +89,31 @@ export default function AdminBookingsPage() {
     }
   };
 
+  const handleConfirmCancelBooking = async (reason) => {
+    const targetBooking = cancelDialog.booking;
+    if (!targetBooking) return;
+
+    setCancelDialog((prev) => ({ ...prev, submitting: true }));
+    setFeedbackError('');
+    setFeedbackSuccess('');
+
+    try {
+      const res = await adminService.cancelBooking(targetBooking._id, reason);
+      const updatedBooking = res?.data?.booking;
+      setFeedbackSuccess(
+        `Booking cancelled for ${targetBooking.user?.fullName || 'member'} and capacity slot released.`
+      );
+      setCancelDialog({ open: false, booking: null, submitting: false });
+      if (selectedDetails?._id === targetBooking._id && updatedBooking) {
+        setSelectedDetails(updatedBooking);
+      }
+      fetchBookings();
+    } catch (err) {
+      setFeedbackError(err.message || 'Failed to cancel booking.');
+      setCancelDialog((prev) => ({ ...prev, submitting: false }));
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div>
@@ -86,16 +121,24 @@ export default function AdminBookingsPage() {
           Booking Management
         </h1>
         <p className="text-sm text-slate-600 mt-1">
-          Read-only oversight of event bookings, attendee statuses, and capacity utilization across the platform.
+          Inspect event reservations, capacity utilization, and perform safe administrative cancellations.
         </p>
       </div>
 
       <div className="p-4 rounded-2xl border border-blue-200 bg-blue-50/70 text-blue-900 flex items-start space-x-3">
         <Info className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
         <p className="text-xs leading-relaxed">
-          Booking records are read-only in the admin panel to preserve booking integrity, attendee capacity counts, and member-initiated cancellation workflows.
+          Administrative cancellations atomically release the event capacity slot and record an
+          audit entry. Payment refunds are not processed automatically in the current release.
         </p>
       </div>
+
+      {feedbackSuccess && (
+        <div className="p-3.5 rounded-xl border bg-emerald-50 border-emerald-200 text-emerald-800 text-sm flex items-center gap-2">
+          <CheckCircle2 className="w-4 h-4 shrink-0" />
+          <span>{feedbackSuccess}</span>
+        </div>
+      )}
 
       {feedbackError && (
         <div className="p-3.5 rounded-xl border bg-red-50 border-red-200 text-red-800 text-sm flex items-center gap-2">
@@ -229,14 +272,32 @@ export default function AdminBookingsPage() {
                         </div>
                       </td>
                       <td className="py-3.5 pl-4 text-right">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleOpenDetails(booking._id)}
-                        >
-                          <Eye className="w-3.5 h-3.5 mr-1.5" />
-                          View
-                        </Button>
+                        <div className="inline-flex items-center gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleOpenDetails(booking._id)}
+                          >
+                            <Eye className="w-3.5 h-3.5 mr-1.5" />
+                            View
+                          </Button>
+                          {booking.status === 'confirmed' && (
+                            <Button
+                              variant="danger"
+                              size="sm"
+                              onClick={() =>
+                                setCancelDialog({
+                                  open: true,
+                                  booking,
+                                  submitting: false,
+                                })
+                              }
+                            >
+                              <Ban className="w-3.5 h-3.5 mr-1" />
+                              Cancel
+                            </Button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );
@@ -378,7 +439,23 @@ export default function AdminBookingsPage() {
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        isOpen={cancelDialog.open}
+        title="Cancel Member Booking?"
+        description={`Cancelling this reservation for ${
+          cancelDialog.booking?.user?.fullName || 'this member'
+        } decrements the event's bookedCount atomically. No automated financial refund is issued.`}
+        confirmLabel="Cancel Booking"
+        confirmVariant="danger"
+        showReason
+        requireReason
+        reasonLabel="Cancellation Reason"
+        reasonPlaceholder="Explain why this booking is being cancelled by moderation..."
+        loading={cancelDialog.submitting}
+        onConfirm={handleConfirmCancelBooking}
+        onClose={() => setCancelDialog({ open: false, booking: null, submitting: false })}
+      />
     </div>
   );
 }
-

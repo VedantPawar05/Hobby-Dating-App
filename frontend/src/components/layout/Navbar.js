@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '../../context/AuthContext.js';
-import { Compass, User, LogOut, Menu, X, Sparkles, Shield } from 'lucide-react';
+import { Compass, User, LogOut, Menu, X, Sparkles, Shield, CalendarDays } from 'lucide-react';
 import Button from '../common/Button.js';
 
 export function Navbar() {
@@ -17,6 +17,9 @@ export function Navbar() {
     ...(isAuthenticated
       ? [
           { href: '/dashboard', label: 'My Hub', icon: Sparkles },
+          ...(user?.role === 'organizer' || user?.role === 'admin'
+            ? [{ href: '/organizer', label: 'Organizer', icon: CalendarDays }]
+            : []),
           { href: '/profile', label: 'Profile', icon: User },
           ...(user?.role === 'admin'
             ? [{ href: '/admin', label: 'Admin', icon: Shield }]

@@ -5,6 +5,7 @@ import app from '../src/app.js';
 import { User } from '../src/models/user.model.js';
 import { Event } from '../src/models/event.model.js';
 import { Booking } from '../src/models/booking.model.js';
+import { ModerationLog } from '../src/models/moderation-log.model.js';
 import { generateToken } from '../src/utils/token.js';
 
 describe('Event Management & Discovery API (/api/events)', () => {
@@ -219,9 +220,7 @@ describe('Event Management & Discovery API (/api/events)', () => {
   });
 
   describe('Event Discovery (GET /api/events)', () => {
-    it('returns published upcoming events with filtering', async () => {
-      vi.spyOn(User, 'findById').mockResolvedValue(normalUser);
-
+    it('returns published upcoming events publicly without authentication', async () => {
       const mockEvents = [
         new Event({
           _id: new mongoose.Types.ObjectId(),
@@ -244,14 +243,62 @@ describe('Event Management & Discovery API (/api/events)', () => {
       });
       vi.spyOn(Event, 'countDocuments').mockResolvedValue(1);
 
-      const res = await request(app)
-        .get('/api/events?city=Seattle&category=Running')
-        .set('Authorization', `Bearer ${userToken}`);
+      const res = await request(app).get('/api/events?city=Seattle&category=Running');
 
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
       expect(res.body.data.events).toHaveLength(1);
       expect(res.body.data.pagination.total).toBe(1);
+    });
+
+    it('returns published event details publicly and hides drafts from anonymous users', async () => {
+      const eventId = new mongoose.Types.ObjectId();
+      const publishedEvent = new Event({
+        _id: eventId,
+        title: 'Public Trail Meetup',
+        category: 'Hiking',
+        status: 'published',
+        location: { city: 'Seattle', address: 'Trailhead' },
+        startDateTime: new Date(Date.now() + 3600000),
+        endDateTime: new Date(Date.now() + 7200000),
+        capacity: 20,
+        bookedCount: 1,
+        organizer: organizerId,
+      });
+
+      vi.spyOn(Event, 'findById').mockReturnValue({
+        populate: vi.fn().mockResolvedValue(publishedEvent),
+      });
+
+      const publicRes = await request(app).get(`/api/events/${eventId}`);
+      expect(publicRes.status).toBe(200);
+      expect(publicRes.body.data.event.title).toBe('Public Trail Meetup');
+
+      const draftEvent = new Event({
+        _id: eventId,
+        title: 'Secret Draft',
+        category: 'Hiking',
+        status: 'draft',
+        location: { city: 'Seattle', address: 'Trailhead' },
+        startDateTime: new Date(Date.now() + 3600000),
+        endDateTime: new Date(Date.now() + 7200000),
+        capacity: 20,
+        bookedCount: 0,
+        organizer: organizerId,
+      });
+
+      vi.spyOn(Event, 'findById').mockReturnValue({
+        populate: vi.fn().mockResolvedValue(draftEvent),
+      });
+
+      const anonDraftRes = await request(app).get(`/api/events/${eventId}`);
+      expect(anonDraftRes.status).toBe(404);
+
+      vi.spyOn(User, 'findById').mockResolvedValue(organizerUser);
+      const ownerDraftRes = await request(app)
+        .get(`/api/events/${eventId}`)
+        .set('Authorization', `Bearer ${organizerToken}`);
+      expect(ownerDraftRes.status).toBe(200);
     });
   });
 
@@ -347,22 +394,181 @@ describe('Event Management & Discovery API (/api/events)', () => {
       expect(res.body.success).toBe(false);
     });
 
-    it('allows admin to promote a normal user to organizer', async () => {
-      vi.spyOn(User, 'findById').mockImplementation(async (id) => {
-        if (id.toString() === adminId) return adminUser;
-        return normalUser;
+    it('allows admin to promote a normal user to organizer and logs moderation action', async () => {
+      const mutableUser = new User({
+        _id: normalUserId,
+        fullName: 'Normal User',
+        email: 'user@example.com',
+        role: 'user',
+        isActive: true,
       });
 
-      vi.spyOn(normalUser, 'save').mockResolvedValue(normalUser);
+      vi.spyOn(User, 'findById').mockImplementation(async (id) => {
+        if (id.toString() === adminId) return adminUser;
+        return mutableUser;
+      });
+
+      vi.spyOn(mutableUser, 'save').mockResolvedValue(mutableUser);
+      const logSpy = vi.spyOn(ModerationLog, 'create').mockResolvedValue({});
 
       const res = await request(app)
         .patch(`/api/users/${normalUserId}/role`)
         .set('Authorization', `Bearer ${adminToken}`)
-        .send({ role: 'organizer' });
+        .send({ role: 'organizer', reason: 'Verified host' });
 
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
       expect(res.body.data.user.role).toBe('organizer');
+      expect(logSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          actionType: 'update_user_role',
+          targetId: mutableUser._id,
+        })
+      );
+    });
+
+    it('prevents an admin from changing their own role or demoting another admin', async () => {
+      const otherAdminId = new mongoose.Types.ObjectId().toString();
+      const otherAdmin = new User({
+        _id: otherAdminId,
+        fullName: 'Other Admin',
+        email: 'other-admin@ricoz.com',
+        role: 'admin',
+        isActive: true,
+      });
+
+      vi.spyOn(User, 'findById').mockImplementation(async (id) => {
+        if (id.toString() === adminId) return adminUser;
+        return otherAdmin;
+      });
+
+      const selfRes = await request(app)
+        .patch(`/api/users/${adminId}/role`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ role: 'user' });
+
+      expect(selfRes.status).toBe(400);
+
+      const peerRes = await request(app)
+        .patch(`/api/users/${otherAdminId}/role`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ role: 'user' });
+
+      expect(peerRes.status).toBe(403);
+    });
+  });
+
+  describe('Organizer QR Check-in (POST /api/events/:eventId/check-in)', () => {
+    const eventId = new mongoose.Types.ObjectId().toString();
+    const bookingId = new mongoose.Types.ObjectId().toString();
+
+    const hostedEvent = new Event({
+      _id: eventId,
+      title: 'Morning QR Check-in Run',
+      status: 'published',
+      organizer: organizerId,
+    });
+
+    it('checks in an attendee using QR JSON payload', async () => {
+      vi.spyOn(User, 'findById').mockResolvedValue(organizerUser);
+      vi.spyOn(Event, 'findById').mockResolvedValue(hostedEvent);
+      vi.spyOn(Booking, 'findOne').mockResolvedValue({
+        _id: bookingId,
+        event: eventId,
+        status: 'confirmed',
+        checkedIn: false,
+        checkInCode: 'RCZ-ABCD1234',
+      });
+      vi.spyOn(Booking, 'findOneAndUpdate').mockReturnValue({
+        select: vi.fn().mockReturnValue({
+          populate: vi.fn().mockResolvedValue({
+            _id: bookingId,
+            status: 'confirmed',
+            checkedIn: true,
+            checkedInAt: new Date(),
+            user: { fullName: 'Normal User', email: 'user@example.com' },
+          }),
+        }),
+      });
+
+      const qrPayload = JSON.stringify({
+        type: 'hobby_dating_checkin',
+        bookingId,
+        eventId,
+        checkInCode: 'RCZ-ABCD1234',
+      });
+
+      const res = await request(app)
+        .post(`/api/events/${eventId}/check-in`)
+        .set('Authorization', `Bearer ${organizerToken}`)
+        .send({ qrData: qrPayload });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.booking.checkedIn).toBe(true);
+    });
+
+    it('rejects duplicate, cancelled, wrong-event, unauthorized, and unknown check-in attempts', async () => {
+      // Duplicate check-in (409)
+      vi.spyOn(User, 'findById').mockResolvedValue(organizerUser);
+      vi.spyOn(Event, 'findById').mockResolvedValue(hostedEvent);
+      vi.spyOn(Booking, 'findOne').mockResolvedValue({
+        _id: bookingId,
+        event: eventId,
+        status: 'confirmed',
+        checkedIn: true,
+        checkInCode: 'RCZ-ABCD1234',
+      });
+
+      const dupRes = await request(app)
+        .post(`/api/events/${eventId}/check-in`)
+        .set('Authorization', `Bearer ${organizerToken}`)
+        .send({ checkInCode: 'RCZ-ABCD1234' });
+      expect(dupRes.status).toBe(409);
+
+      // Cancelled booking (400)
+      vi.spyOn(Booking, 'findOne').mockResolvedValue({
+        _id: bookingId,
+        event: eventId,
+        status: 'cancelled',
+        checkedIn: false,
+        checkInCode: 'RCZ-ABCD1234',
+      });
+      const cancelledRes = await request(app)
+        .post(`/api/events/${eventId}/check-in`)
+        .set('Authorization', `Bearer ${organizerToken}`)
+        .send({ checkInCode: 'RCZ-ABCD1234' });
+      expect(cancelledRes.status).toBe(400);
+
+      // Wrong event QR payload (400)
+      const otherEventId = new mongoose.Types.ObjectId().toString();
+      const wrongEventRes = await request(app)
+        .post(`/api/events/${eventId}/check-in`)
+        .set('Authorization', `Bearer ${organizerToken}`)
+        .send({
+          qrData: JSON.stringify({
+            bookingId,
+            eventId: otherEventId,
+            checkInCode: 'RCZ-ABCD1234',
+          }),
+        });
+      expect(wrongEventRes.status).toBe(400);
+
+      // Missing booking / invalid code (404)
+      vi.spyOn(Booking, 'findOne').mockResolvedValue(null);
+      const missingRes = await request(app)
+        .post(`/api/events/${eventId}/check-in`)
+        .set('Authorization', `Bearer ${organizerToken}`)
+        .send({ checkInCode: 'RCZ-UNKNOWN' });
+      expect(missingRes.status).toBe(404);
+
+      // Unauthorized organizer (403)
+      vi.spyOn(User, 'findById').mockResolvedValue(anotherOrganizerUser);
+      const forbiddenRes = await request(app)
+        .post(`/api/events/${eventId}/check-in`)
+        .set('Authorization', `Bearer ${anotherOrganizerToken}`)
+        .send({ checkInCode: 'RCZ-ABCD1234' });
+      expect(forbiddenRes.status).toBe(403);
     });
   });
 });

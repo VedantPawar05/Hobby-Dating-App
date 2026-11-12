@@ -15,10 +15,13 @@ import {
   CheckCircle2,
   AlertCircle,
   XCircle,
+  Flag,
+  QrCode,
 } from 'lucide-react';
 import Button from '../../../../components/common/Button.js';
 import LoadingState from '../../../../components/common/LoadingState.js';
 import ErrorState from '../../../../components/common/ErrorState.js';
+import ReportModal from '../../../../components/common/ReportModal.js';
 import {
   formatDate,
   formatTime,
@@ -35,10 +38,11 @@ export default function EventDetailsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Booking state
+  // Booking & report state
   const [bookingLoading, setBookingLoading] = useState(false);
   const [existingBooking, setExistingBooking] = useState(null);
   const [feedback, setFeedback] = useState({ type: null, message: '' });
+  const [reportTarget, setReportTarget] = useState(null);
 
   const loadEvent = useCallback(async () => {
     setLoading(true);
@@ -313,6 +317,12 @@ export default function EventDetailsPage() {
                     <CheckCircle2 className="w-4 h-4 mr-1.5 text-emerald-600" />
                     Spot Confirmed
                   </span>
+                  <Link href="/dashboard">
+                    <Button variant="outline" size="md">
+                      <QrCode className="w-4 h-4 mr-1.5" />
+                      View QR Ticket
+                    </Button>
+                  </Link>
                   {hasEnded && existingBooking.checkedIn && (
                     <Link href={`/events/${eventId}/mixer`}>
                       <Button
@@ -362,25 +372,82 @@ export default function EventDetailsPage() {
             </div>
           </div>
 
-          {/* Organizer Card */}
-          <div className="pt-6 border-t border-surface-100 flex items-center space-x-4">
-            <div className="w-12 h-12 rounded-full bg-brand-100 text-brand-800 font-bold flex items-center justify-center text-sm border border-brand-200">
-              {organizer?.fullName?.charAt(0) || 'O'}
-            </div>
-            <div>
-              <div className="flex items-center space-x-1.5">
-                <span className="text-sm font-bold text-surface-900">
-                  {organizer?.fullName || 'Event Organizer'}
-                </span>
-                <ShieldCheck className="w-4 h-4 text-brand-600" title="Verified Organizer" />
+          {/* Organizer Card & Reporting */}
+          <div className="pt-6 border-t border-surface-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-center space-x-4">
+              <div className="w-12 h-12 rounded-full bg-brand-100 text-brand-800 font-bold flex items-center justify-center text-sm border border-brand-200">
+                {organizer?.fullName?.charAt(0) || 'O'}
               </div>
-              <p className="text-xs text-surface-500">
-                Community Host • {organizer?.city || 'Club Member'}
-              </p>
+              <div>
+                <div className="flex items-center space-x-1.5">
+                  <span className="text-sm font-bold text-surface-900">
+                    {organizer?.fullName || 'Event Organizer'}
+                  </span>
+                  <ShieldCheck className="w-4 h-4 text-brand-600" title="Verified Organizer" />
+                </div>
+                <p className="text-xs text-surface-500">
+                  Community Host • {organizer?.city || 'Club Member'}
+                </p>
+              </div>
             </div>
+
+            {!isOwner && (
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    if (!isAuthenticated) {
+                      router.push(`/login?redirect=/events/${eventId}`);
+                      return;
+                    }
+                    setReportTarget({
+                      targetType: 'event',
+                      targetId: eventId,
+                      targetLabel: title,
+                    });
+                  }}
+                  className="text-surface-500 hover:text-rose-600"
+                >
+                  <Flag className="w-3.5 h-3.5 mr-1.5" />
+                  Report Event
+                </Button>
+                {organizer?._id && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      if (!isAuthenticated) {
+                        router.push(`/login?redirect=/events/${eventId}`);
+                        return;
+                      }
+                      setReportTarget({
+                        targetType: 'user',
+                        targetId: organizer._id,
+                        targetLabel: organizer.fullName,
+                      });
+                    }}
+                    className="text-surface-500 hover:text-rose-600"
+                  >
+                    <Flag className="w-3.5 h-3.5 mr-1.5" />
+                    Report Host
+                  </Button>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>
+
+      <ReportModal
+        isOpen={Boolean(reportTarget)}
+        targetType={reportTarget?.targetType}
+        targetId={reportTarget?.targetId}
+        targetLabel={reportTarget?.targetLabel}
+        onClose={() => setReportTarget(null)}
+      />
     </div>
   );
 }

@@ -1,6 +1,10 @@
 import app from './app.js';
 import { env } from './config/env.js';
 import { connectDatabase, disconnectDatabase } from './config/database.js';
+import {
+  startEventLifecycleScheduler,
+  stopEventLifecycleScheduler,
+} from './services/event-lifecycle.service.js';
 
 let server;
 
@@ -18,6 +22,7 @@ async function startServer() {
       if (env.NODE_ENV !== 'production') {
         console.log(`[Server] Health check available at http://localhost:${env.PORT}/api/health`);
       }
+      startEventLifecycleScheduler();
     });
   } catch (error) {
     console.error('[Server] Failed to initialize application:', error.message);
@@ -31,6 +36,7 @@ async function startServer() {
  */
 async function handleShutdown(signal) {
   console.log(`\n[Server] Received ${signal}. Starting graceful shutdown...`);
+  stopEventLifecycleScheduler();
 
   if (server) {
     server.close(async () => {
@@ -63,4 +69,3 @@ process.on('SIGINT', () => handleShutdown('SIGINT'));
 process.on('SIGTERM', () => handleShutdown('SIGTERM'));
 
 startServer();
-

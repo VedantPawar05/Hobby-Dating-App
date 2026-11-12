@@ -23,9 +23,15 @@ export const createEventSchema = z
     activityType: z.string().trim().max(100).optional().default(''),
     coverImage: z
       .string()
+      .trim()
       .url('Cover image must be a valid URL')
+      .refine((val) => /^https?:\/\//i.test(val), {
+        message: 'Cover image URL must use HTTP or HTTPS',
+      })
+      .or(z.literal(''))
       .optional()
-      .nullable(),
+      .nullable()
+      .transform((val) => (val === '' ? null : val)),
     location: z.object({
       city: z
         .string({ error: 'City is required' })
@@ -77,7 +83,17 @@ export const updateEventSchema = z
     description: z.string().trim().min(10).max(2000).optional(),
     category: z.enum(EVENT_CATEGORIES).optional(),
     activityType: z.string().trim().max(100).optional(),
-    coverImage: z.string().url().optional().nullable(),
+    coverImage: z
+      .string()
+      .trim()
+      .url('Cover image must be a valid URL')
+      .refine((val) => /^https?:\/\//i.test(val), {
+        message: 'Cover image URL must use HTTP or HTTPS',
+      })
+      .or(z.literal(''))
+      .optional()
+      .nullable()
+      .transform((val) => (val === '' ? null : val)),
     location: z
       .object({
         city: z.string().trim().min(2).max(100).optional(),
@@ -118,24 +134,61 @@ export const updateEventSchema = z
     }
   );
 
-export const eventQuerySchema = z.object({
+export const eventQuerySchema = z
+  .object({
+    search: z.string().trim().optional(),
+    category: z.enum(EVENT_CATEGORIES).optional(),
+    city: z.string().trim().optional(),
+    activityType: z.string().trim().optional(),
+    startDate: z
+      .string()
+      .refine((val) => !isNaN(Date.parse(val)), 'Invalid startDate')
+      .optional(),
+    endDate: z
+      .string()
+      .refine((val) => !isNaN(Date.parse(val)), 'Invalid endDate')
+      .optional(),
+    page: z.coerce.number().int().min(1).default(1),
+    limit: z.coerce.number().int().min(1).max(100).default(10),
+    sortBy: z.enum(['startDateTime', 'createdAt', 'price']).default('startDateTime'),
+    sortOrder: z.enum(['asc', 'desc']).default('asc'),
+  })
+  .refine(
+    (data) => {
+      if (data.startDate && data.endDate) {
+        return new Date(data.startDate) <= new Date(data.endDate);
+      }
+      return true;
+    },
+    {
+      message: 'startDate must be earlier than or equal to endDate',
+      path: ['endDate'],
+    }
+  );
+
+export const organizerEventsQuerySchema = z.object({
   search: z.string().trim().optional(),
-  category: z.enum(EVENT_CATEGORIES).optional(),
-  city: z.string().trim().optional(),
-  activityType: z.string().trim().optional(),
-  startDate: z
-    .string()
-    .refine((val) => !isNaN(Date.parse(val)), 'Invalid startDate')
-    .optional(),
-  endDate: z
-    .string()
-    .refine((val) => !isNaN(Date.parse(val)), 'Invalid endDate')
-    .optional(),
+  status: z.enum(ALLOWED_EVENT_STATUSES).optional(),
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(10),
-  sortBy: z.enum(['startDateTime', 'createdAt', 'price']).default('startDateTime'),
-  sortOrder: z.enum(['asc', 'desc']).default('asc'),
 });
 
+export const attendeesQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+});
 
-
+export const checkInSchema = z
+  .object({
+    qrData: z.string().trim().min(1, 'QR payload cannot be empty').max(1000).optional(),
+    checkInCode: z
+      .string()
+      .trim()
+      .min(4, 'Check-in code must be at least 4 characters')
+      .max(64, 'Check-in code cannot exceed 64 characters')
+      .optional(),
+  })
+  .strict('Unrecognized fields provided for check-in')
+  .refine((data) => Boolean(data.qrData || data.checkInCode), {
+    message: 'Either qrData or checkInCode is required',
+  });

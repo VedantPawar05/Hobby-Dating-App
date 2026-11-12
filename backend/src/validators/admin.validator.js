@@ -1,6 +1,6 @@
 import mongoose from 'mongoose';
 import { z } from 'zod';
-import { ALLOWED_ROLES } from '../constants/user.constants.js';
+import { ALLOWED_ROLES, USER_ROLES } from '../constants/user.constants.js';
 import { ALLOWED_EVENT_STATUSES, EVENT_CATEGORIES } from '../constants/event.constants.js';
 import { ALLOWED_BOOKING_STATUSES } from '../constants/booking.constants.js';
 import {
@@ -132,4 +132,16 @@ export const adminBookingsQuerySchema = z.object({
   ...paginationFields,
 });
 
-
+export const adminUpdateRoleSchema = z
+  .object({
+    role: z.enum([USER_ROLES.USER, USER_ROLES.ORGANIZER], {
+      error: () => 'Admin role assignments support user or organizer roles only',
+    }),
+    reason: z
+      .string()
+      .trim()
+      .max(500, 'Reason cannot exceed 500 characters')
+      .optional()
+      .default(''),
+  })
+  .strict('Unrecognized fields provided for role update');

@@ -183,7 +183,7 @@ describe('Admin Panel API (/api/admin)', () => {
         upcoming: 8,
         pendingApprovals: 2,
       });
-      expect(res.body.data.stats.reports.userReportingAvailable).toBe(false);
+      expect(res.body.data.stats.reports.userReportingAvailable).toBe(true);
     });
   });
 
@@ -458,7 +458,7 @@ describe('Admin Panel API (/api/admin)', () => {
 
       expect(res.status).toBe(200);
       expect(res.body.data.reports).toEqual([]);
-      expect(res.body.data.reportingDependency.userReportingAvailable).toBe(false);
+      expect(res.body.data.reportingDependency.userReportingAvailable).toBe(true);
     });
 
     it('reviews an existing report and records a moderation log', async () => {
@@ -744,5 +744,134 @@ describe('Admin Panel API (/api/admin)', () => {
       expect(allowedRes.headers['access-control-allow-credentials']).toBe('true');
     });
   });
-});
 
+  describe('Admin Role Management (PATCH /api/admin/users/:userId/role)', () => {
+    it('promotes a user to organizer and records a moderation log', async () => {
+      const targetUser = new User({
+        _id: userId,
+        fullName: 'Rohan Member',
+        email: 'rohan@example.com',
+        role: 'user',
+        isActive: true,
+      });
+
+      vi.spyOn(User, 'findById').mockImplementation(async (id) => {
+        if (id.toString() === adminId) return adminUser;
+        return targetUser;
+      });
+      vi.spyOn(targetUser, 'save').mockResolvedValue(targetUser);
+      const logSpy = vi.spyOn(ModerationLog, 'create').mockResolvedValue({});
+
+      const res = await request(app)
+        .patch(`/api/admin/users/${userId}/role`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ role: 'organizer', reason: 'Approved host application' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.user.role).toBe('organizer');
+      expect(logSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          actionType: 'update_user_role',
+          targetId: targetUser._id,
+        })
+      );
+    });
+
+    it('blocks self-demotion, peer-admin role changes, and invalid target roles', async () => {
+      vi.spyOn(User, 'findById').mockImplementation(async (id) => {
+        if (id.toString() === adminId) return adminUser;
+        if (id.toString() === anotherAdminId) return anotherAdmin;
+        return normalUser;
+      });
+
+      const selfRes = await request(app)
+        .patch(`/api/admin/users/${adminId}/role`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ role: 'user' });
+      expect(selfRes.status).toBe(400);
+
+      const peerRes = await request(app)
+        .patch(`/api/admin/users/${anotherAdminId}/role`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ role: 'organizer' });
+      expect(peerRes.status).toBe(403);
+
+      const invalidRes = await request(app)
+        .patch(`/api/admin/users/${userId}/role`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ role: 'admin' });
+      expect(invalidRes.status).toBe(400);
+    });
+  });
+
+  describe('Admin Booking Cancellation (PATCH /api/admin/bookings/:bookingId/cancel)', () => {
+    const bookingId = new mongoose.Types.ObjectId().toString();
+
+    it('cancels a confirmed booking, decrements bookedCount safely, and records an audit log', async () => {
+      vi.spyOn(User, 'findById').mockResolvedValue(adminUser);
+
+      const cancelledDoc = {
+        _id: bookingId,
+        status: 'cancelled',
+        cancelledAt: new Date(),
+        user: { _id: userId, fullName: 'Rohan Member', email: 'rohan@example.com' },
+        event: {
+          _id: eventId,
+          title: 'Sunrise 5K',
+          bookedCount: 5,
+          capacity: 20,
+        },
+      };
+
+      vi.spyOn(Booking, 'findOneAndUpdate').mockReturnValue(mockQueryChain(cancelledDoc));
+      const eventUpdateSpy = vi.spyOn(Event, 'findOneAndUpdate').mockResolvedValue({
+        _id: eventId,
+        bookedCount: 4,
+      });
+      const logSpy = vi.spyOn(ModerationLog, 'create').mockResolvedValue({});
+
+      const res = await request(app)
+        .patch(`/api/admin/bookings/${bookingId}/cancel`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ reason: 'Duplicate booking requested by attendee' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.booking.status).toBe('cancelled');
+      expect(eventUpdateSpy).toHaveBeenCalledWith(
+        { _id: eventId, bookedCount: { $gt: 0 } },
+        { $inc: { bookedCount: -1 } }
+      );
+      expect(logSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          actionType: 'cancel_booking',
+          targetType: 'booking',
+          targetId: bookingId,
+        })
+      );
+    });
+
+    it('rejects duplicate cancellation and missing moderation reason', async () => {
+      vi.spyOn(User, 'findById').mockResolvedValue(adminUser);
+
+      const missingReasonRes = await request(app)
+        .patch(`/api/admin/bookings/${bookingId}/cancel`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ reason: 'no' });
+      expect(missingReasonRes.status).toBe(400);
+
+      vi.spyOn(Booking, 'findOneAndUpdate').mockReturnValue(mockQueryChain(null));
+      vi.spyOn(Booking, 'findById').mockResolvedValue({
+        _id: bookingId,
+        status: 'cancelled',
+      });
+
+      const alreadyCancelledRes = await request(app)
+        .patch(`/api/admin/bookings/${bookingId}/cancel`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ reason: 'Duplicate cancellation attempt' });
+      expect(alreadyCancelledRes.status).toBe(400);
+    });
+  });
+});

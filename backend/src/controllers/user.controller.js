@@ -41,7 +41,12 @@ export class UserController {
    */
   static async updateRole(req, res, next) {
     try {
-      const updatedUser = await UserService.updateUserRole(req.params.userId, req.body.role);
+      const updatedUser = await UserService.updateUserRole(
+        req.params.userId,
+        req.body.role,
+        req.user._id,
+        req.body.reason || ''
+      );
 
       return ApiResponse.success(res, {
         statusCode: 200,

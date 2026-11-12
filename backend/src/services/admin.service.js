@@ -10,16 +10,11 @@ import {
   MODERATION_ACTIONS,
   MODERATION_TARGET_TYPES,
   REPORT_STATUSES,
+  REPORT_TARGET_TYPES,
 } from '../constants/admin.constants.js';
-
-/**
- * Escapes special RegExp characters in user-supplied search strings.
- * @param {string} value
- * @returns {string}
- */
-function escapeRegex(value) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
+import { escapeRegex } from '../utils/regex.js';
+import { syncCompletedEventsIfConnected } from './event-lifecycle.service.js';
+import { UserService } from './user.service.js';
 
 /**
  * Creates a standardized error with HTTP status code.
@@ -107,6 +102,7 @@ export class AdminService {
    * Computes live platform overview statistics from MongoDB collections.
    */
   static async getDashboardStats() {
+    await syncCompletedEventsIfConnected();
     const now = new Date();
 
     const [
@@ -180,7 +176,7 @@ export class AdminService {
       reports: {
         total: totalReports,
         open: openReports,
-        userReportingAvailable: false,
+        userReportingAvailable: true,
       },
       recentModerationLogs,
     };
@@ -279,6 +275,13 @@ export class AdminService {
   }
 
   /**
+   * Delegates controlled role updates with self-demotion guard and audit logging.
+   */
+  static async updateUserRole(userId, adminId, { role, reason = '' }) {
+    return UserService.updateUserRole(userId, role, adminId, reason);
+  }
+
+  /**
    * Lists organizer accounts enriched with their hosted event counts.
    */
   static async listOrganizers(filters = {}) {
@@ -340,6 +343,7 @@ export class AdminService {
    * Lists all events across statuses for admin review and moderation.
    */
   static async listEvents({ search, status, category, city, page = 1, limit = 10 } = {}) {
+    await syncCompletedEventsIfConnected();
     const query = {};
 
     if (status) {
@@ -474,12 +478,41 @@ export class AdminService {
       ],
     });
 
+    const userTargetIds = items
+      .filter((r) => r.targetType === REPORT_TARGET_TYPES.USER)
+      .map((r) => r.targetId);
+    const eventTargetIds = items
+      .filter((r) => r.targetType === REPORT_TARGET_TYPES.EVENT)
+      .map((r) => r.targetId);
+
+    const [targetUsers, targetEvents] = await Promise.all([
+      userTargetIds.length > 0
+        ? User.find({ _id: { $in: userTargetIds } }).select('fullName email role isActive')
+        : [],
+      eventTargetIds.length > 0
+        ? Event.find({ _id: { $in: eventTargetIds } }).select('title status category location.city')
+        : [],
+    ]);
+
+    const userMap = new Map(targetUsers.map((u) => [u._id.toString(), u]));
+    const eventMap = new Map(targetEvents.map((e) => [e._id.toString(), e]));
+
+    const enrichedReports = items.map((item) => {
+      const plain = typeof item.toObject === 'function' ? item.toObject() : { ...item };
+      const targetKey = plain.targetId?.toString();
+      plain.targetSummary =
+        plain.targetType === REPORT_TARGET_TYPES.USER
+          ? userMap.get(targetKey) || null
+          : eventMap.get(targetKey) || null;
+      return plain;
+    });
+
     return {
-      reports: items,
+      reports: enrichedReports,
       pagination,
       reportingDependency: {
-        userReportingAvailable: false,
-        note: 'Public user-facing report submission endpoints have not been implemented in prior phases yet.',
+        userReportingAvailable: true,
+        note: 'User-facing reporting pipeline is active via /api/reports.',
       },
     };
   }
@@ -599,6 +632,71 @@ export class AdminService {
   }
 
   /**
+   * Safely cancels a confirmed booking on behalf of moderation, atomically updating
+   * booking state, keeping event bookedCount consistent, and recording an audit log.
+   * Does not perform financial refunds.
+   */
+  static async cancelBooking(bookingId, adminId, { reason }) {
+    const booking = await Booking.findOneAndUpdate(
+      {
+        _id: bookingId,
+        status: BOOKING_STATUSES.CONFIRMED,
+      },
+      {
+        $set: {
+          status: BOOKING_STATUSES.CANCELLED,
+          cancelledAt: new Date(),
+        },
+      },
+      { new: true }
+    )
+      .select('-checkInCode')
+      .populate('user', 'fullName email city role isActive')
+      .populate({
+        path: 'event',
+        select: 'title category location startDateTime endDateTime capacity bookedCount price status',
+      });
+
+    if (!booking) {
+      const existing = await Booking.findById(bookingId);
+      if (!existing) {
+        throw createHttpError('Booking not found', 404);
+      }
+      if (existing.status === BOOKING_STATUSES.CANCELLED) {
+        throw createHttpError('Booking has already been cancelled', 400);
+      }
+      throw createHttpError('Cannot cancel this booking', 400);
+    }
+
+    const eventId = booking.event?._id ? booking.event._id.toString() : booking.event.toString();
+
+    await Event.findOneAndUpdate(
+      { _id: eventId, bookedCount: { $gt: 0 } },
+      { $inc: { bookedCount: -1 } }
+    );
+
+    if (booking.event && typeof booking.event.bookedCount === 'number' && booking.event.bookedCount > 0) {
+      booking.event.bookedCount -= 1;
+    }
+
+    await recordModerationLog({
+      adminId,
+      actionType: MODERATION_ACTIONS.CANCEL_BOOKING,
+      targetType: MODERATION_TARGET_TYPES.BOOKING,
+      targetId: booking._id,
+      reason,
+      metadata: {
+        eventId,
+        title: booking.event?.title || '',
+        email: booking.user?.email || '',
+        refundProcessed: false,
+      },
+    });
+
+    return booking;
+  }
+
+  /**
    * Lists recorded moderation audit entries with filtering by action, target, admin, date, and search.
    */
   static async listModerationLogs({
@@ -665,4 +763,3 @@ export class AdminService {
     };
   }
 }
-

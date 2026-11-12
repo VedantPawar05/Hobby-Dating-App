@@ -90,6 +90,23 @@ export class AdminController {
     }
   }
 
+  static async updateUserRole(req, res, next) {
+    try {
+      const user = await AdminService.updateUserRole(
+        req.params.userId,
+        req.user._id,
+        req.body
+      );
+      return ApiResponse.success(res, {
+        statusCode: 200,
+        message: 'User role updated successfully',
+        data: { user },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   static async listEvents(req, res, next) {
     try {
       const result = await AdminService.listEvents(req.query);
@@ -247,5 +264,21 @@ export class AdminController {
       next(error);
     }
   }
-}
 
+  static async cancelBooking(req, res, next) {
+    try {
+      const booking = await AdminService.cancelBooking(
+        req.params.bookingId,
+        req.user._id,
+        req.body
+      );
+      return ApiResponse.success(res, {
+        statusCode: 200,
+        message: 'Booking cancelled and capacity slot released',
+        data: { booking },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+}

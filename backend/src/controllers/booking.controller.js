@@ -58,5 +58,24 @@ export class BookingController {
       next(error);
     }
   }
-}
 
+  /**
+   * Generates and returns QR check-in ticket for a confirmed booking.
+   */
+  static async getTicket(req, res, next) {
+    try {
+      const ticket = await BookingService.getBookingTicket(
+        req.user._id,
+        req.params.bookingId
+      );
+
+      return ApiResponse.success(res, {
+        statusCode: 200,
+        message: 'Booking QR ticket generated successfully',
+        data: ticket,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+}

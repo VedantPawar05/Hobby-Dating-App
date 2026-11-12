@@ -19,6 +19,8 @@ function EventsDiscoveryContent() {
     category: searchParams.get('category') || '',
     city: searchParams.get('city') || '',
     activityType: searchParams.get('activityType') || '',
+    startDate: searchParams.get('startDate') || '',
+    endDate: searchParams.get('endDate') || '',
     sortBy: 'startDateTime',
     sortOrder: 'asc',
   });
@@ -81,6 +83,8 @@ function EventsDiscoveryContent() {
       category: '',
       city: '',
       activityType: '',
+      startDate: '',
+      endDate: '',
       sortBy: 'startDateTime',
       sortOrder: 'asc',
     };

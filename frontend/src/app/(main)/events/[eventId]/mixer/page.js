@@ -21,6 +21,7 @@ import ErrorState from '../../../../../components/common/ErrorState.js';
 import EmptyState from '../../../../../components/common/EmptyState.js';
 import MixerCountdown from '../../../../../components/mixer/MixerCountdown.js';
 import AttendeeCard from '../../../../../components/mixer/AttendeeCard.js';
+import ReportModal from '../../../../../components/common/ReportModal.js';
 import { formatDateTime } from '../../../../../utils/formatters.js';
 
 function MixerContent() {
@@ -33,6 +34,7 @@ function MixerContent() {
   const [error, setError] = useState('');
   const [taggingId, setTaggingId] = useState(null);
   const [feedback, setFeedback] = useState({ type: '', message: '' });
+  const [reportTarget, setReportTarget] = useState(null);
 
   const loadMixer = useCallback(async () => {
     setLoading(true);
@@ -249,12 +251,21 @@ function MixerContent() {
                   tagging={taggingId === attendee._id}
                   disabled={Boolean(taggingId) || !mixerInfo?.isActive}
                   onTag={handleTagAttendee}
+                  onReport={(target) => setReportTarget(target)}
                 />
               ))}
             </div>
           )}
         </>
       )}
+
+      <ReportModal
+        isOpen={Boolean(reportTarget)}
+        targetType="user"
+        targetId={reportTarget?._id}
+        targetLabel={reportTarget?.fullName}
+        onClose={() => setReportTarget(null)}
+      />
     </div>
   );
 }
@@ -266,4 +277,3 @@ export default function EventMixerPage() {
     </ProtectedRoute>
   );
 }
-

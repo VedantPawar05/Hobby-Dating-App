@@ -10,7 +10,9 @@ import {
   CheckCircle2,
   AlertCircle,
   Users as UsersIcon,
+  UserCog,
 } from 'lucide-react';
+import { useAuth } from '../../../context/AuthContext.js';
 import adminService from '../../../services/admin.service.js';
 import Card from '../../../components/common/Card.js';
 import Button from '../../../components/common/Button.js';
@@ -23,6 +25,7 @@ import PaginationBar from '../../../components/admin/PaginationBar.js';
 import { formatDate } from '../../../utils/formatters.js';
 
 export default function AdminUsersPage() {
+  const { user: currentUser } = useAuth();
   const [users, setUsers] = useState([]);
   const [pagination, setPagination] = useState({ page: 1, limit: 10, total: 0, totalPages: 1 });
   const [filters, setFilters] = useState({ search: '', role: '', isActive: '', page: 1 });
@@ -34,11 +37,12 @@ export default function AdminUsersPage() {
   const [selectedDetails, setSelectedDetails] = useState(null);
   const [detailsLoading, setDetailsLoading] = useState(false);
 
-  // Confirm suspension / reactivation dialog state
+  // Confirm suspension / reactivation / role change dialog state
   const [dialogState, setDialogState] = useState({
     open: false,
     mode: null,
     user: null,
+    nextRole: null,
     submitting: false,
   });
 
@@ -75,7 +79,7 @@ export default function AdminUsersPage() {
   };
 
   const handleConfirmAction = async (reason) => {
-    const { mode, user } = dialogState;
+    const { mode, user, nextRole } = dialogState;
     if (!user) return;
     setDialogState((prev) => ({ ...prev, submitting: true }));
     setFeedback({ type: '', message: '' });
@@ -84,11 +88,17 @@ export default function AdminUsersPage() {
       if (mode === 'suspend') {
         await adminService.suspendUser(user._id, reason);
         setFeedback({ type: 'success', message: `${user.fullName}'s account has been suspended.` });
+      } else if (mode === 'role') {
+        await adminService.updateUserRole(user._id, { role: nextRole, reason });
+        setFeedback({
+          type: 'success',
+          message: `${user.fullName} updated to '${nextRole}' role.`,
+        });
       } else {
         await adminService.reactivateUser(user._id, reason);
         setFeedback({ type: 'success', message: `${user.fullName}'s account has been reactivated.` });
       }
-      setDialogState({ open: false, mode: null, user: null, submitting: false });
+      setDialogState({ open: false, mode: null, user: null, nextRole: null, submitting: false });
       fetchUsers();
     } catch (err) {
       setFeedback({ type: 'error', message: err.message || 'Action failed.' });
@@ -208,40 +218,61 @@ export default function AdminUsersPage() {
                             <Eye className="w-3.5 h-3.5 mr-1" />
                             View
                           </Button>
-                          {u.role !== 'admin' &&
-                            (u.isActive ? (
+                          {u.role !== 'admin' && u._id !== currentUser?._id && (
+                            <>
                               <Button
-                                variant="danger"
+                                variant="outline"
                                 size="sm"
                                 onClick={() =>
                                   setDialogState({
                                     open: true,
-                                    mode: 'suspend',
+                                    mode: 'role',
                                     user: u,
+                                    nextRole: u.role === 'organizer' ? 'user' : 'organizer',
                                     submitting: false,
                                   })
                                 }
                               >
-                                <UserX className="w-3.5 h-3.5 mr-1" />
-                                Suspend
+                                <UserCog className="w-3.5 h-3.5 mr-1" />
+                                {u.role === 'organizer' ? 'Make User' : 'Make Organizer'}
                               </Button>
-                            ) : (
-                              <Button
-                                variant="primary"
-                                size="sm"
-                                onClick={() =>
-                                  setDialogState({
-                                    open: true,
-                                    mode: 'reactivate',
-                                    user: u,
-                                    submitting: false,
-                                  })
-                                }
-                              >
-                                <UserCheck className="w-3.5 h-3.5 mr-1" />
-                                Reactivate
-                              </Button>
-                            ))}
+                              {u.isActive ? (
+                                <Button
+                                  variant="danger"
+                                  size="sm"
+                                  onClick={() =>
+                                    setDialogState({
+                                      open: true,
+                                      mode: 'suspend',
+                                      user: u,
+                                      nextRole: null,
+                                      submitting: false,
+                                    })
+                                  }
+                                >
+                                  <UserX className="w-3.5 h-3.5 mr-1" />
+                                  Suspend
+                                </Button>
+                              ) : (
+                                <Button
+                                  variant="primary"
+                                  size="sm"
+                                  onClick={() =>
+                                    setDialogState({
+                                      open: true,
+                                      mode: 'reactivate',
+                                      user: u,
+                                      nextRole: null,
+                                      submitting: false,
+                                    })
+                                  }
+                                >
+                                  <UserCheck className="w-3.5 h-3.5 mr-1" />
+                                  Reactivate
+                                </Button>
+                              )}
+                            </>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -327,33 +358,48 @@ export default function AdminUsersPage() {
         </div>
       )}
 
-      {/* Suspend / Reactivate Confirmation */}
+      {/* Suspend / Reactivate / Role Confirmation */}
       <ConfirmDialog
         isOpen={dialogState.open}
         title={
           dialogState.mode === 'suspend'
             ? `Suspend ${dialogState.user?.fullName}?`
-            : `Reactivate ${dialogState.user?.fullName}?`
+            : dialogState.mode === 'role'
+              ? `Change role for ${dialogState.user?.fullName} to "${dialogState.nextRole}"?`
+              : `Reactivate ${dialogState.user?.fullName}?`
         }
         description={
           dialogState.mode === 'suspend'
             ? 'Suspending this account will immediately block sign-in and invalidate authenticated requests until reactivated.'
-            : 'Reactivating this account restores normal login and booking access.'
+            : dialogState.mode === 'role'
+              ? dialogState.nextRole === 'organizer'
+                ? 'Promoting this account grants permission to create and manage hobby events and scan attendee QR tickets.'
+                : 'Changing this account back to standard user revokes organizer event creation permissions.'
+              : 'Reactivating this account restores normal login and booking access.'
         }
-        confirmLabel={dialogState.mode === 'suspend' ? 'Suspend Account' : 'Reactivate Account'}
+        confirmLabel={
+          dialogState.mode === 'suspend'
+            ? 'Suspend Account'
+            : dialogState.mode === 'role'
+              ? `Confirm ${dialogState.nextRole === 'organizer' ? 'Promotion' : 'Role Change'}`
+              : 'Reactivate Account'
+        }
         confirmVariant={dialogState.mode === 'suspend' ? 'danger' : 'primary'}
         showReason
         requireReason={dialogState.mode === 'suspend'}
         reasonPlaceholder={
           dialogState.mode === 'suspend'
             ? 'Explain why this account is being suspended...'
-            : 'Optional note for reactivation audit log...'
+            : dialogState.mode === 'role'
+              ? 'Optional audit note for role update...'
+              : 'Optional note for reactivation audit log...'
         }
         loading={dialogState.submitting}
         onConfirm={handleConfirmAction}
-        onClose={() => setDialogState({ open: false, mode: null, user: null, submitting: false })}
+        onClose={() =>
+          setDialogState({ open: false, mode: null, user: null, nextRole: null, submitting: false })
+        }
       />
     </div>
   );
 }
-

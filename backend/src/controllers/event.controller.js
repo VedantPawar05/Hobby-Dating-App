@@ -58,7 +58,7 @@ export class EventController {
    */
   static async getEventById(req, res, next) {
     try {
-      const event = await EventService.getEventById(req.params.eventId);
+      const event = await EventService.getEventById(req.params.eventId, req.user || null);
 
       return ApiResponse.success(res, {
         statusCode: 200,
@@ -124,5 +124,25 @@ export class EventController {
       next(error);
     }
   }
-}
 
+  /**
+   * Verifies a QR code or manual check-in code and marks attendee as checked in.
+   */
+  static async checkInAttendee(req, res, next) {
+    try {
+      const booking = await EventService.checkInAttendee(
+        req.params.eventId,
+        req.user,
+        req.body
+      );
+
+      return ApiResponse.success(res, {
+        statusCode: 200,
+        message: 'Attendee checked in successfully',
+        data: { booking },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+}
