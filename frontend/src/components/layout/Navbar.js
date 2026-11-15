@@ -15,6 +15,7 @@ import {
   CalendarDays,
   HeartHandshake,
   Bell,
+  MessageSquare,
 } from 'lucide-react';
 import Button from '../common/Button.js';
 import NotificationBell from '../notifications/NotificationBell.js';
@@ -30,6 +31,7 @@ export function Navbar() {
       ? [
           { href: '/dashboard', label: 'My Hub', icon: Sparkles },
           { href: '/matches', label: 'Matches', icon: HeartHandshake },
+          { href: '/chat', label: 'Messages', icon: MessageSquare },
           ...(user?.role === 'organizer' || user?.role === 'admin'
             ? [{ href: '/organizer', label: 'Organizer', icon: CalendarDays }]
             : [{ href: '/become-organizer', label: 'Host Events', icon: CalendarDays }]),

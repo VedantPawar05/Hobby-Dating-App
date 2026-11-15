@@ -13,6 +13,7 @@ export const NOTIFICATION_TYPES = {
   EVENT_CANCELLED: 'event_cancelled',
   EVENT_UPDATED: 'event_updated',
   MUTUAL_MATCH: 'mutual_match',
+  NEW_MESSAGE: 'new_message',
   ADMIN_NEW_APPLICATION: 'admin_new_application',
   ADMIN_NEW_REPORT: 'admin_new_report',
 };
@@ -25,6 +26,8 @@ export const NOTIFICATION_ENTITY_TYPES = {
   MATCH: 'match',
   ORGANIZER_APPLICATION: 'organizer_application',
   REPORT: 'report',
+  CONVERSATION: 'conversation',
+  MESSAGE: 'message',
 };
 
 export const ALLOWED_NOTIFICATION_ENTITY_TYPES = Object.values(

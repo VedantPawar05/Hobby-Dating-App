@@ -25,6 +25,7 @@ export const MODERATION_TARGET_TYPES = {
   BOOKING: 'booking',
   REPORT: 'report',
   ORGANIZER_APPLICATION: 'organizer_application',
+  MESSAGE: 'message',
 };
 
 export const ALLOWED_MODERATION_TARGET_TYPES = Object.values(MODERATION_TARGET_TYPES);
@@ -32,6 +33,7 @@ export const ALLOWED_MODERATION_TARGET_TYPES = Object.values(MODERATION_TARGET_T
 export const REPORT_TARGET_TYPES = {
   USER: 'user',
   EVENT: 'event',
+  MESSAGE: 'message',
 };
 
 export const ALLOWED_REPORT_TARGET_TYPES = Object.values(REPORT_TARGET_TYPES);

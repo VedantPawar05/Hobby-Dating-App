@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
-import { HeartHandshake, MapPin, Calendar, Sparkles, Compass } from 'lucide-react';
+import { HeartHandshake, MapPin, Calendar, Sparkles, Compass, MessageSquare } from 'lucide-react';
 import ProtectedRoute from '../../../components/auth/ProtectedRoute.js';
 import mixerService from '../../../services/mixer.service.js';
 import Card from '../../../components/common/Card.js';
@@ -151,21 +151,30 @@ function MatchesContent() {
                     </div>
                   )}
 
-                  <div className="pt-3 border-t border-surface-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-slate-500">
-                    <div className="flex items-center gap-1.5 min-w-0">
-                      <Calendar className="w-3.5 h-3.5 text-brand-600 shrink-0" />
-                      {match.event?._id ? (
-                        <Link
-                          href={`/events/${match.event._id}`}
-                          className="font-semibold text-brand-700 hover:underline truncate"
-                        >
-                          {match.event.title}
-                        </Link>
-                      ) : (
-                        <span className="truncate">{match.event?.title || 'Event'}</span>
-                      )}
+                  <div className="pt-3 border-t border-surface-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-slate-500">
+                    <div className="flex flex-col gap-1 min-w-0">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <Calendar className="w-3.5 h-3.5 text-brand-600 shrink-0" />
+                        {match.event?._id ? (
+                          <Link
+                            href={`/events/${match.event._id}`}
+                            className="font-semibold text-brand-700 hover:underline truncate"
+                          >
+                            {match.event.title}
+                          </Link>
+                        ) : (
+                          <span className="truncate">{match.event?.title || 'Event'}</span>
+                        )}
+                      </div>
+                      <span>Matched {formatDateTime(match.matchedAt)}</span>
                     </div>
-                    <span className="shrink-0">Matched {formatDateTime(match.matchedAt)}</span>
+
+                    <Link href={`/chat?matchId=${match._id}`} className="shrink-0">
+                      <Button variant="primary" size="sm" className="w-full sm:w-auto shadow-sm">
+                        <MessageSquare className="w-3.5 h-3.5 mr-1.5" />
+                        Chat
+                      </Button>
+                    </Link>
                   </div>
                 </Card>
               );

@@ -1,3 +1,4 @@
+import http from 'http';
 import app from './app.js';
 import { env } from './config/env.js';
 import { connectDatabase, disconnectDatabase } from './config/database.js';
@@ -5,11 +6,12 @@ import {
   startEventLifecycleScheduler,
   stopEventLifecycleScheduler,
 } from './services/event-lifecycle.service.js';
+import { initSocketServer, closeSocketServer } from './socket/index.js';
 
 let server;
 
 /**
- * Initializes database connection and starts Express HTTP server.
+ * Initializes database connection and starts Express HTTP server with Socket.io.
  * Ensures the application does NOT accept requests if database connection fails.
  */
 async function startServer() {
@@ -17,7 +19,10 @@ async function startServer() {
     console.log('[Server] Connecting to database...');
     await connectDatabase();
 
-    server = app.listen(env.PORT, () => {
+    const httpServer = http.createServer(app);
+    initSocketServer(httpServer);
+
+    server = httpServer.listen(env.PORT, () => {
       console.log(`[Server] Application running in ${env.NODE_ENV} mode on port ${env.PORT}`);
       if (env.NODE_ENV !== 'production') {
         console.log(`[Server] Health check available at http://localhost:${env.PORT}/api/health`);
@@ -37,6 +42,7 @@ async function startServer() {
 async function handleShutdown(signal) {
   console.log(`\n[Server] Received ${signal}. Starting graceful shutdown...`);
   stopEventLifecycleScheduler();
+  closeSocketServer();
 
   if (server) {
     server.close(async () => {

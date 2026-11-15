@@ -106,6 +106,7 @@ const eventSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
+    bufferTimeoutMS: 2000,
     toJSON: {
       transform(doc, ret) {
         delete ret.__v;
@@ -121,8 +122,11 @@ const eventSchema = new mongoose.Schema(
   }
 );
 
-// Compound index for high performance event discovery
-eventSchema.index({ status: 1, city: 1, category: 1, startDateTime: 1 });
+// Compound indexes for high performance event discovery and filtering
+eventSchema.index({ status: 1, 'location.city': 1, category: 1, startDateTime: 1 });
+eventSchema.index({ status: 1, startDateTime: 1 });
+eventSchema.index({ status: 1, category: 1, startDateTime: 1 });
+eventSchema.index({ status: 1, price: 1 });
 eventSchema.index({ organizer: 1, status: 1 });
 
 /**

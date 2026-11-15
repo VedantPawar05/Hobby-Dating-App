@@ -5,6 +5,7 @@ import morgan from 'morgan';
 import cookieParser from 'cookie-parser';
 import { env } from './config/env.js';
 import apiRouter from './routes/index.js';
+import { noSqlSanitizer } from './middlewares/sanitize.middleware.js';
 import { notFoundMiddleware } from './middlewares/not-found.middleware.js';
 import { errorMiddleware } from './middlewares/error.middleware.js';
 
@@ -14,7 +15,11 @@ const app = express();
 app.set('trust proxy', 1);
 
 // 1. Security headers
-app.use(helmet());
+app.use(
+  helmet({
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+  })
+);
 
 // 2. CORS configuration supporting single or comma-separated origins (e.g., Vercel + localhost)
 const allowedOrigins = env.CLIENT_URL
@@ -30,7 +35,8 @@ const corsOptions = {
     }
 
     const normalizedOrigin = origin.replace(/\/+$/, '');
-    if (allowedOrigins.includes('*') || allowedOrigins.includes(normalizedOrigin)) {
+    const isWildcardAllowed = env.NODE_ENV !== 'production' && allowedOrigins.includes('*');
+    if (allowedOrigins.includes(normalizedOrigin) || isWildcardAllowed) {
       return callback(null, true);
     }
 
@@ -54,13 +60,16 @@ app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 app.use(cookieParser(env.COOKIE_SECRET));
 
-// 5. Mount API routes
+// 5. Sanitize request inputs against NoSQL injection operators
+app.use(noSqlSanitizer);
+
+// 6. Mount API routes
 app.use('/api', apiRouter);
 
-// 6. Handle 404 for unknown routes
+// 7. Handle 404 for unknown routes
 app.use(notFoundMiddleware);
 
-// 7. Centralized error handling middleware
+// 8. Centralized error handling middleware
 app.use(errorMiddleware);
 
 export default app;

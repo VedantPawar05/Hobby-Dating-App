@@ -312,14 +312,18 @@ export class EventService {
 
   /**
    * Discovers upcoming published events matching search and filter criteria.
+   * Keeps filtering, sorting, and pagination strictly on the database side.
    */
   static async discoverEvents({
     search,
     category,
     city,
     activityType,
+    date,
     startDate,
     endDate,
+    priceType,
+    isFree,
     page = 1,
     limit = 10,
     sortBy = 'startDateTime',
@@ -329,62 +333,84 @@ export class EventService {
 
     const now = new Date();
 
-    // Public discovery always enforces published, upcoming events only
+    // Public discovery strictly enforces published, upcoming events only
     const query = {
       status: EVENT_STATUSES.PUBLISHED,
       startDateTime: { $gte: now },
     };
 
-    if (category) {
+    if (category && category !== 'All') {
       query.category = category;
     }
 
-    if (city) {
-      query['location.city'] = {
-        $regex: new RegExp(`^${escapeRegex(city.trim())}$`, 'i'),
-      };
+    if (city && city.trim()) {
+      query['location.city'] = new RegExp(escapeRegex(city.trim()), 'i');
     }
 
-    if (activityType) {
-      query.activityType = {
-        $regex: new RegExp(escapeRegex(activityType.trim()), 'i'),
-      };
+    if (activityType && activityType.trim()) {
+      query.activityType = new RegExp(escapeRegex(activityType.trim()), 'i');
     }
 
-    if (search) {
+    if (search && search.trim()) {
       const pattern = new RegExp(escapeRegex(search.trim()), 'i');
       query.$or = [
         { title: pattern },
+        { description: pattern },
         { activityType: pattern },
         { 'location.city': pattern },
       ];
     }
 
-    if (startDate || endDate) {
+    // Price filtering: free (price == 0) or paid (price > 0)
+    if (priceType === 'free' || isFree === true) {
+      query.price = 0;
+    } else if (priceType === 'paid' || isFree === false) {
+      query.price = { $gt: 0 };
+    }
+
+    // Single specific day filter
+    if (date && date.trim()) {
+      const dayStart = new Date(`${date.trim()}T00:00:00.000Z`);
+      const dayEnd = new Date(`${date.trim()}T23:59:59.999Z`);
+      if (!isNaN(dayStart.getTime()) && !isNaN(dayEnd.getTime())) {
+        query.startDateTime = {
+          $gte: dayStart > now ? dayStart : now,
+          $lte: dayEnd,
+        };
+      }
+    } else if (startDate || endDate) {
+      // Date range filter
       query.startDateTime = { ...query.startDateTime };
       if (startDate) {
         const start = new Date(startDate);
-        if (start > now) {
+        if (!isNaN(start.getTime()) && start > now) {
           query.startDateTime.$gte = start;
         }
       }
       if (endDate) {
-        query.startDateTime.$lte = /^\d{4}-\d{2}-\d{2}$/.test(endDate)
-          ? new Date(`${endDate}T23:59:59.999Z`)
+        const end = /^\d{4}-\d{2}-\d{2}$/.test(endDate.trim())
+          ? new Date(`${endDate.trim()}T23:59:59.999Z`)
           : new Date(endDate);
+        if (!isNaN(end.getTime())) {
+          query.startDateTime.$lte = end;
+        }
       }
     }
 
     const sortDirection = sortOrder === 'desc' ? -1 : 1;
-    const sort = { [sortBy]: sortDirection };
-    const skip = (page - 1) * limit;
+    // Deterministic tie-breaker with _id
+    const sort = { [sortBy]: sortDirection, _id: sortDirection };
+
+    const safePage = Math.max(1, Number(page) || 1);
+    const safeLimit = Math.min(100, Math.max(1, Number(limit) || 10));
+    const skip = (safePage - 1) * safeLimit;
 
     const [events, total] = await Promise.all([
       Event.find(query)
         .sort(sort)
         .skip(skip)
-        .limit(limit)
-        .populate('organizer', 'fullName email profilePicture city'),
+        .limit(safeLimit)
+        .populate('organizer', 'fullName profilePicture city'),
       Event.countDocuments(query),
     ]);
 
@@ -392,9 +418,9 @@ export class EventService {
       events,
       pagination: {
         total,
-        page,
-        limit,
-        totalPages: Math.ceil(total / limit) || 1,
+        page: safePage,
+        limit: safeLimit,
+        totalPages: Math.ceil(total / safeLimit) || 1,
       },
     };
   }

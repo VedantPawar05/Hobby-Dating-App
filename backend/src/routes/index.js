@@ -9,6 +9,7 @@ import mixerRoutes from './mixer.routes.js';
 import reportRoutes from './report.routes.js';
 import organizerApplicationRoutes from './organizer-application.routes.js';
 import notificationRoutes from './notification.routes.js';
+import chatRoutes from './chat.routes.js';
 
 const router = Router();
 
@@ -22,5 +23,6 @@ router.use('/mixer', mixerRoutes);
 router.use('/reports', reportRoutes);
 router.use('/organizer-applications', organizerApplicationRoutes);
 router.use('/notifications', notificationRoutes);
+router.use('/conversations', chatRoutes);
 
 export default router;

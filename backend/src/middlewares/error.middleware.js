@@ -1,5 +1,6 @@
 import { env } from '../config/env.js';
 import { ApiResponse } from '../utils/api-response.js';
+import { logger } from '../utils/logger.js';
 
 /**
  * Centralized error-handling middleware for Express.
@@ -25,10 +26,12 @@ export function errorMiddleware(err, req, res, next) {
   else if (err.name === 'ZodError') {
     statusCode = 400;
     message = 'Validation failed';
-    errors = err.issues ? err.issues.map((e) => ({
-      field: e.path.join('.'),
-      message: e.message,
-    })) : null;
+    errors = err.issues
+      ? err.issues.map((e) => ({
+          field: e.path.join('.'),
+          message: e.message,
+        }))
+      : null;
   }
 
   // 3. Mongoose Validation Error
@@ -62,12 +65,23 @@ export function errorMiddleware(err, req, res, next) {
     message = 'Database service unavailable';
   }
 
-  // Log error in development/test for debugging
+  // Structured logging for operations and incident diagnosis
   if (env.NODE_ENV !== 'test') {
-    console.error(`[Error] [${req.method} ${req.url}] ${statusCode} - ${message}`);
-    if (env.NODE_ENV === 'development' && err.stack) {
-      console.error(err.stack);
-    }
+    logger.error(`[HTTP ${statusCode}] ${req.method} ${req.url} - ${message}`, {
+      method: req.method,
+      url: req.url,
+      ip: req.ip,
+      statusCode,
+      userId: req.user?._id?.toString(),
+      errorName: err.name,
+      errorMessage: err.message,
+      ...(env.NODE_ENV === 'development' ? { stack: err.stack } : {}),
+    });
+  }
+
+  // In production, sanitize 500 errors to avoid leaking internal system details
+  if (env.NODE_ENV === 'production' && statusCode === 500) {
+    message = 'An unexpected internal server error occurred. Please try again later.';
   }
 
   // Build error response
@@ -84,5 +98,6 @@ export function errorMiddleware(err, req, res, next) {
 
   return ApiResponse.error(res, responseOptions);
 }
+
 
 

@@ -6,6 +6,7 @@ import { EVENT_STATUSES } from '../constants/event.constants.js';
 import { BOOKING_STATUSES } from '../constants/booking.constants.js';
 import { NotificationService } from './notification.service.js';
 import { NOTIFICATION_TYPES } from '../constants/notification.constants.js';
+import { BlockService } from './block.service.js';
 
 export const MIXER_WINDOW_HOURS = 24;
 export const MIXER_WINDOW_MS = MIXER_WINDOW_HOURS * 60 * 60 * 1000;
@@ -163,7 +164,7 @@ export class MixerService {
 
     const skip = (page - 1) * limit;
 
-    const [verifiedBookings, total, myTags] = await Promise.all([
+    const [verifiedBookings, total, myTags, blockedUserIds] = await Promise.all([
       Booking.find(attendeeQuery)
         .sort({ checkedInAt: 1, bookedAt: 1 })
         .skip(skip)
@@ -174,14 +175,22 @@ export class MixerService {
         event: eventId,
         fromUser: userId,
       }).select('toUser createdAt'),
+      BlockService.getBlockedRelationshipUserIds(userId),
     ]);
+
+    const blockedSet = new Set(blockedUserIds.map((id) => id.toString()));
 
     const taggedSet = new Map(
       myTags.map((tag) => [tag.toUser.toString(), tag.createdAt])
     );
 
     const attendees = verifiedBookings
-      .filter((booking) => booking.user && booking.user.isActive !== false)
+      .filter(
+        (booking) =>
+          booking.user &&
+          booking.user.isActive !== false &&
+          !blockedSet.has(booking.user._id.toString())
+      )
       .map((booking) => {
         const profile = booking.user;
         const taggedAt = taggedSet.get(profile._id.toString()) || null;
@@ -255,6 +264,14 @@ export class MixerService {
 
     if (existingTag) {
       throw createHttpError('You have already tagged this attendee for this event', 409);
+    }
+
+    const isBlocked = await BlockService.isBlocked(fromUserId, toUserId);
+    if (isBlocked) {
+      throw createHttpError(
+        'Cannot tag this attendee: an account block is active between users',
+        403
+      );
     }
 
     try {

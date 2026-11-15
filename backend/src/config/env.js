@@ -41,6 +41,13 @@ const envSchema = z
           message: 'COOKIE_SECRET must be explicitly set in production (cannot use development default)',
         });
       }
+      if (data.CLIENT_URL.split(',').some((u) => u.trim() === '*')) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['CLIENT_URL'],
+          message: 'CLIENT_URL cannot contain wildcard (*) origins in production',
+        });
+      }
     }
   });
 

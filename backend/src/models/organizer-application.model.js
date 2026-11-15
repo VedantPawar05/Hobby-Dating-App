@@ -114,6 +114,7 @@ organizerApplicationSchema.index({ applicant: 1, createdAt: -1 });
 organizerApplicationSchema.index(
   { applicant: 1 },
   {
+    name: 'uniq_pending_applicant',
     unique: true,
     partialFilterExpression: { status: ORGANIZER_APPLICATION_STATUSES.PENDING },
   }

@@ -17,6 +17,13 @@ export const SORT_OPTIONS = [
   { label: 'Date (Furthest)', value: 'startDateTime_desc' },
   { label: 'Recently Created', value: 'createdAt_desc' },
   { label: 'Price (Low to High)', value: 'price_asc' },
+  { label: 'Price (High to Low)', value: 'price_desc' },
+];
+
+export const PRICE_OPTIONS = [
+  { label: 'All Prices', value: 'all' },
+  { label: 'Free Only', value: 'free' },
+  { label: 'Paid Only', value: 'paid' },
 ];
 
 export const GENDER_OPTIONS = [

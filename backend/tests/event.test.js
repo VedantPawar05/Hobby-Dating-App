@@ -381,6 +381,173 @@ describe('Event Management & Discovery API (/api/events)', () => {
     });
   });
 
+  describe('Public Event Discovery & Search (GET /api/events)', () => {
+    function mockEventQueryChain(resolvedEvents) {
+      return {
+        sort: vi.fn().mockReturnThis(),
+        skip: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockReturnThis(),
+        populate: vi.fn().mockResolvedValue(resolvedEvents),
+      };
+    }
+
+    const sampleEvent = {
+      _id: new mongoose.Types.ObjectId(),
+      title: 'Morning 5K Sunrise Run',
+      description: 'Scenic waterfront 5K run with coffee meetup afterwards.',
+      category: 'Running',
+      activityType: 'Road Running',
+      location: { city: 'Seattle', address: 'Green Lake' },
+      startDateTime: new Date(Date.now() + 86400000),
+      endDateTime: new Date(Date.now() + 90000000),
+      capacity: 25,
+      bookedCount: 5,
+      price: 0,
+      status: 'published',
+      organizer: {
+        _id: new mongoose.Types.ObjectId(),
+        fullName: 'Organizer Bob',
+        profilePicture: 'https://example.com/bob.jpg',
+        city: 'Seattle',
+      },
+    };
+
+    it('searches events by name and description with case-insensitive matching', async () => {
+      const findSpy = vi.spyOn(Event, 'find').mockReturnValue(mockEventQueryChain([sampleEvent]));
+      vi.spyOn(Event, 'countDocuments').mockResolvedValue(1);
+
+      const res = await request(app).get('/api/events?search=waterfront');
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.events).toHaveLength(1);
+      expect(res.body.data.events[0].title).toBe('Morning 5K Sunrise Run');
+
+      // Verify search condition matches both title and description
+      const queryArg = findSpy.mock.calls[0][0];
+      expect(queryArg.$or).toBeDefined();
+      expect(queryArg.$or).toContainEqual(expect.objectContaining({ title: expect.any(RegExp) }));
+      expect(queryArg.$or).toContainEqual(expect.objectContaining({ description: expect.any(RegExp) }));
+    });
+
+    it('filters events by category and city location', async () => {
+      const findSpy = vi.spyOn(Event, 'find').mockReturnValue(mockEventQueryChain([sampleEvent]));
+      vi.spyOn(Event, 'countDocuments').mockResolvedValue(1);
+
+      const res = await request(app).get('/api/events?category=Running&city=Seattle');
+
+      expect(res.status).toBe(200);
+      const queryArg = findSpy.mock.calls[0][0];
+      expect(queryArg.category).toBe('Running');
+      expect(queryArg['location.city']).toBeInstanceOf(RegExp);
+      expect(queryArg['location.city'].test('Seattle')).toBe(true);
+      expect(queryArg['location.city'].test('seattle')).toBe(true);
+    });
+
+    it('filters events by single specific date and date range', async () => {
+      const findSpy = vi.spyOn(Event, 'find').mockReturnValue(mockEventQueryChain([sampleEvent]));
+      vi.spyOn(Event, 'countDocuments').mockResolvedValue(1);
+
+      const resDate = await request(app).get('/api/events?date=2026-11-20');
+      expect(resDate.status).toBe(200);
+
+      const queryArgDate = findSpy.mock.calls[0][0];
+      expect(queryArgDate.startDateTime.$gte).toBeDefined();
+      expect(queryArgDate.startDateTime.$lte).toBeDefined();
+
+      // Range filter
+      const resRange = await request(app).get('/api/events?startDate=2026-11-01&endDate=2026-11-30');
+      expect(resRange.status).toBe(200);
+    });
+
+    it('filters events by free and paid price types', async () => {
+      const findSpy = vi.spyOn(Event, 'find').mockReturnValue(mockEventQueryChain([sampleEvent]));
+      vi.spyOn(Event, 'countDocuments').mockResolvedValue(1);
+
+      // Free events
+      const resFree = await request(app).get('/api/events?priceType=free');
+      expect(resFree.status).toBe(200);
+      expect(findSpy.mock.calls[0][0].price).toBe(0);
+
+      // Paid events
+      const resPaid = await request(app).get('/api/events?priceType=paid');
+      expect(resPaid.status).toBe(200);
+      expect(findSpy.mock.calls[1][0].price).toEqual({ $gt: 0 });
+    });
+
+    it('applies combined filters, deterministic sorting, and server-side pagination', async () => {
+      const mockChain = mockEventQueryChain([sampleEvent]);
+      const findSpy = vi.spyOn(Event, 'find').mockReturnValue(mockChain);
+      vi.spyOn(Event, 'countDocuments').mockResolvedValue(30);
+
+      const res = await request(app).get(
+        '/api/events?search=run&category=Running&city=Seattle&priceType=free&sortBy=startDateTime&sortOrder=asc&page=2&limit=10'
+      );
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.pagination.page).toBe(2);
+      expect(res.body.data.pagination.limit).toBe(10);
+      expect(res.body.data.pagination.totalPages).toBe(3);
+
+      expect(mockChain.skip).toHaveBeenCalledWith(10);
+      expect(mockChain.limit).toHaveBeenCalledWith(10);
+      // Deterministic tie-breaker with _id
+      expect(mockChain.sort).toHaveBeenCalledWith({ startDateTime: 1, _id: 1 });
+    });
+
+    it('rejects invalid pagination values with 400 Bad Request', async () => {
+      const resInvalidPage = await request(app).get('/api/events?page=0');
+      expect(resInvalidPage.status).toBe(400);
+
+      const resInvalidLimit = await request(app).get('/api/events?limit=500');
+      expect(resInvalidLimit.status).toBe(400);
+    });
+
+    it('strictly enforces exclusion of draft, pending, rejected, and cancelled events from discovery', async () => {
+      const findSpy = vi.spyOn(Event, 'find').mockReturnValue(mockEventQueryChain([]));
+      vi.spyOn(Event, 'countDocuments').mockResolvedValue(0);
+
+      await request(app).get('/api/events');
+
+      const queryArg = findSpy.mock.calls[0][0];
+      expect(queryArg.status).toBe('published');
+      expect(queryArg.status).not.toBe('draft');
+      expect(queryArg.status).not.toBe('pending');
+      expect(queryArg.status).not.toBe('rejected');
+      expect(queryArg.status).not.toBe('cancelled');
+    });
+
+    it('safely escapes special regex characters in search and location queries', async () => {
+      const findSpy = vi.spyOn(Event, 'find').mockReturnValue(mockEventQueryChain([]));
+      vi.spyOn(Event, 'countDocuments').mockResolvedValue(0);
+
+      const res = await request(app).get('/api/events?search=run(5K)+[fast]?&city=New(York)?');
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.events).toEqual([]);
+    });
+
+    it('protects private organizer information in public discovery payload', async () => {
+      const mockChain = mockEventQueryChain([sampleEvent]);
+      vi.spyOn(Event, 'find').mockReturnValue(mockChain);
+      vi.spyOn(Event, 'countDocuments').mockResolvedValue(1);
+
+      const res = await request(app).get('/api/events');
+
+      expect(res.status).toBe(200);
+      expect(mockChain.populate).toHaveBeenCalledWith(
+        'organizer',
+        'fullName profilePicture city'
+      );
+      // Ensures private organizer email is not populated for public discovery
+      expect(mockChain.populate).not.toHaveBeenCalledWith(
+        'organizer',
+        expect.stringContaining('email')
+      );
+    });
+  });
+
   describe('Admin Role Promotion (PATCH /api/users/:userId/role)', () => {
     it('rejects normal user attempting to promote another user or themselves', async () => {
       vi.spyOn(User, 'findById').mockResolvedValue(normalUser);

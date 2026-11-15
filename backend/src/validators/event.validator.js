@@ -137,20 +137,40 @@ export const updateEventSchema = z
 export const eventQuerySchema = z
   .object({
     search: z.string().trim().optional(),
-    category: z.enum(EVENT_CATEGORIES).optional(),
+    category: z
+      .string()
+      .trim()
+      .optional()
+      .transform((val) => (val === 'All' || val === '' ? undefined : val))
+      .refine(
+        (val) => !val || EVENT_CATEGORIES.includes(val),
+        `Category must be one of: ${EVENT_CATEGORIES.join(', ')}`
+      ),
     city: z.string().trim().optional(),
     activityType: z.string().trim().optional(),
+    date: z
+      .string()
+      .trim()
+      .refine((val) => !val || !isNaN(Date.parse(val)), 'Invalid date format')
+      .optional(),
     startDate: z
       .string()
-      .refine((val) => !isNaN(Date.parse(val)), 'Invalid startDate')
+      .trim()
+      .refine((val) => !val || !isNaN(Date.parse(val)), 'Invalid startDate')
       .optional(),
     endDate: z
       .string()
-      .refine((val) => !isNaN(Date.parse(val)), 'Invalid endDate')
+      .trim()
+      .refine((val) => !val || !isNaN(Date.parse(val)), 'Invalid endDate')
+      .optional(),
+    priceType: z.enum(['all', 'free', 'paid']).optional(),
+    isFree: z
+      .union([z.boolean(), z.enum(['true', 'false'])])
+      .transform((val) => (typeof val === 'string' ? val === 'true' : val))
       .optional(),
     page: z.coerce.number().int().min(1).default(1),
     limit: z.coerce.number().int().min(1).max(100).default(10),
-    sortBy: z.enum(['startDateTime', 'createdAt', 'price']).default('startDateTime'),
+    sortBy: z.enum(['startDateTime', 'createdAt', 'price', 'title']).default('startDateTime'),
     sortOrder: z.enum(['asc', 'desc']).default('asc'),
   })
   .refine(

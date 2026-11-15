@@ -6,6 +6,7 @@ import {
   validateQuery,
   validateRequest,
 } from '../middlewares/validate.middleware.js';
+import { taggingRateLimiter } from '../middlewares/rate-limit.middleware.js';
 import {
   mixerQuerySchema,
   createMixerTagSchema,
@@ -50,6 +51,7 @@ router.get(
 router.post(
   '/:eventId/tags',
   validateObjectId('eventId'),
+  taggingRateLimiter,
   validateRequest(createMixerTagSchema),
   MixerController.createTag
 );

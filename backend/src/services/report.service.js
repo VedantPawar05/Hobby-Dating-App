@@ -38,6 +38,15 @@ export class ReportService {
       if (targetEvent.organizer?.toString() === reporterId.toString()) {
         throw createHttpError('You cannot report your own event', 400);
       }
+    } else if (targetType === REPORT_TARGET_TYPES.MESSAGE) {
+      const { Message } = await import('../models/message.model.js');
+      const targetMessage = await Message.findById(targetId);
+      if (!targetMessage) {
+        throw createHttpError('Reported message not found', 404);
+      }
+      if (targetMessage.sender.toString() === reporterId.toString()) {
+        throw createHttpError('You cannot report your own message', 400);
+      }
     }
 
     const existingActiveReport = await Report.findOne({

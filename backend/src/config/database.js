@@ -37,6 +37,11 @@ export async function connectDatabase(uri = env.MONGODB_URI) {
   try {
     const connection = await mongoose.connect(uri, {
       serverSelectionTimeoutMS: env.NODE_ENV === 'test' ? 2000 : 10000,
+      maxPoolSize: env.NODE_ENV === 'test' ? 5 : 50,
+      minPoolSize: env.NODE_ENV === 'test' ? 1 : 5,
+      socketTimeoutMS: 45000,
+      family: 4,
+      autoIndex: env.NODE_ENV !== 'production',
     });
 
     console.log(`[Database] MongoDB successfully connected to ${safeUri}`);

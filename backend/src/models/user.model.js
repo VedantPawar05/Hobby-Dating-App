@@ -75,9 +75,34 @@ const userSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
+    privacy: {
+      profileVisibility: {
+        type: String,
+        enum: ['public', 'members_only', 'matches_only'],
+        default: 'members_only',
+      },
+      showInterests: {
+        type: Boolean,
+        default: true,
+      },
+      showCity: {
+        type: Boolean,
+        default: true,
+      },
+      allowDiscovery: {
+        type: Boolean,
+        default: true,
+      },
+    },
+    deletedAt: {
+      type: Date,
+      default: null,
+      index: true,
+    },
   },
   {
     timestamps: true,
+    bufferTimeoutMS: 2000,
     toJSON: {
       transform(doc, ret) {
         delete ret.password;
