@@ -1,8 +1,11 @@
 import { Event } from '../models/event.model.js';
 import { Booking } from '../models/booking.model.js';
 import { MixerTag } from '../models/mixer-tag.model.js';
+import { Match } from '../models/match.model.js';
 import { EVENT_STATUSES } from '../constants/event.constants.js';
 import { BOOKING_STATUSES } from '../constants/booking.constants.js';
+import { NotificationService } from './notification.service.js';
+import { NOTIFICATION_TYPES } from '../constants/notification.constants.js';
 
 export const MIXER_WINDOW_HOURS = 24;
 export const MIXER_WINDOW_MS = MIXER_WINDOW_HOURS * 60 * 60 * 1000;
@@ -262,6 +265,76 @@ export class MixerService {
         expiresAt: windowInfo.expiresAt,
       });
 
+      const reciprocalTag = await MixerTag.findOne({
+        event: eventId,
+        fromUser: toUserId,
+        toUser: fromUserId,
+      });
+
+      let match = null;
+      if (reciprocalTag) {
+        const [userA, userB] = [fromUserId.toString(), toUserId.toString()].sort();
+        let matchDoc;
+        try {
+          matchDoc = await Match.findOneAndUpdate(
+            { event: eventId, userA, userB },
+            {
+              $setOnInsert: {
+                event: eventId,
+                userA,
+                userB,
+                users: [userA, userB],
+                matchedAt: new Date(),
+              },
+            },
+            { upsert: true, new: true }
+          )
+            .populate('users', 'fullName city gender bio interests profilePicture isActive')
+            .populate('event', 'title category location startDateTime endDateTime');
+        } catch (upsertErr) {
+          if (upsertErr?.code === 11000) {
+            matchDoc = await Match.findOne({ event: eventId, userA, userB })
+              .populate('users', 'fullName city gender bio interests profilePicture isActive')
+              .populate('event', 'title category location startDateTime endDateTime');
+          } else {
+            throw upsertErr;
+          }
+        }
+
+        if (matchDoc) {
+          match = formatMatchForUser(matchDoc, fromUserId);
+          const matchForTarget = formatMatchForUser(matchDoc, toUserId);
+
+          const eventTitle = matchDoc.event?.title || event.title || 'the event';
+          const partnerForFromUser = match?.matchedUser?.fullName || 'Another attendee';
+          const partnerForToUser = matchForTarget?.matchedUser?.fullName || 'Another attendee';
+
+          // Notify caller (fromUser)
+          await NotificationService.safeCreate({
+            recipient: fromUserId,
+            title: "It's a Mutual Match! ✨",
+            message: `You and ${partnerForFromUser} mutually tagged each other for "${eventTitle}"!`,
+            type: NOTIFICATION_TYPES.MUTUAL_MATCH,
+            entityType: 'match',
+            entityId: matchDoc._id,
+            link: '/matches',
+            dedupeKey: `match_notif:${matchDoc._id}:${fromUserId}`,
+          });
+
+          // Notify partner (toUser)
+          await NotificationService.safeCreate({
+            recipient: toUserId,
+            title: "It's a Mutual Match! ✨",
+            message: `You and ${partnerForToUser} mutually tagged each other for "${eventTitle}"!`,
+            type: NOTIFICATION_TYPES.MUTUAL_MATCH,
+            entityType: 'match',
+            entityId: matchDoc._id,
+            link: '/matches',
+            dedupeKey: `match_notif:${matchDoc._id}:${toUserId}`,
+          });
+        }
+      }
+
       return {
         tag: {
           _id: tag._id,
@@ -270,6 +343,8 @@ export class MixerService {
           createdAt: tag.createdAt,
           expiresAt: tag.expiresAt,
         },
+        matched: Boolean(match),
+        match,
         mixer: windowInfo,
       };
     } catch (error) {
@@ -279,5 +354,106 @@ export class MixerService {
       throw error;
     }
   }
+
+  /**
+   * Lists mutual matches for the authenticated user, optionally scoped to an event.
+   */
+  static async getMyMatches(userId, { eventId, page = 1, limit = 20 } = {}) {
+    const query = { users: userId };
+    if (eventId) {
+      query.event = eventId;
+    }
+
+    const skip = (page - 1) * limit;
+
+    const [matchDocs, total] = await Promise.all([
+      Match.find(query)
+        .sort({ matchedAt: -1, createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .populate('users', 'fullName city gender bio interests profilePicture isActive')
+        .populate('event', 'title category location startDateTime endDateTime'),
+      Match.countDocuments(query),
+    ]);
+
+    const matches = matchDocs.map((doc) => formatMatchForUser(doc, userId));
+
+    return {
+      matches,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit) || 1,
+      },
+    };
+  }
+
+  /**
+   * Retrieves a single mutual match by ID only if the requesting user is a participant.
+   */
+  static async getMatchById(matchId, userId) {
+    const matchDoc = await Match.findById(matchId)
+      .populate('users', 'fullName city gender bio interests profilePicture isActive')
+      .populate('event', 'title category location startDateTime endDateTime');
+
+    if (!matchDoc) {
+      throw createHttpError('Match not found', 404);
+    }
+
+    const viewerId = userId.toString();
+    const isParticipant = Array.isArray(matchDoc.users)
+      ? matchDoc.users.some((u) => (u?._id ? u._id.toString() : u?.toString()) === viewerId)
+      : false;
+
+    if (!isParticipant) {
+      throw createHttpError('Forbidden: You can only view your own mutual matches', 403);
+    }
+
+    return {
+      match: formatMatchForUser(matchDoc, userId),
+    };
+  }
+}
+
+/**
+ * Shapes a Match document for the requesting participant without leaking
+ * private account fields or exposing internal pairing metadata.
+ */
+function formatMatchForUser(matchDoc, currentUserId) {
+  const viewerId = currentUserId.toString();
+  const usersList = Array.isArray(matchDoc.users) ? matchDoc.users : [];
+  const otherUser = usersList.find((u) => {
+    const id = u?._id ? u._id.toString() : u?.toString();
+    return id && id !== viewerId;
+  });
+
+  return {
+    _id: matchDoc._id,
+    matchedAt: matchDoc.matchedAt || matchDoc.createdAt,
+    event:
+      matchDoc.event && typeof matchDoc.event === 'object'
+        ? {
+            _id: matchDoc.event._id,
+            title: matchDoc.event.title,
+            category: matchDoc.event.category,
+            location: matchDoc.event.location,
+            startDateTime: matchDoc.event.startDateTime,
+            endDateTime: matchDoc.event.endDateTime,
+          }
+        : matchDoc.event,
+    matchedUser:
+      otherUser && typeof otherUser === 'object' && otherUser.isActive !== false
+        ? {
+            _id: otherUser._id,
+            fullName: otherUser.fullName,
+            city: otherUser.city,
+            gender: otherUser.gender,
+            bio: otherUser.bio,
+            interests: otherUser.interests || [],
+            profilePicture: otherUser.profilePicture || null,
+          }
+        : null,
+  };
 }
 

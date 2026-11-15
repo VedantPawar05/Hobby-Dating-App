@@ -7,6 +7,8 @@ import bookingRoutes from './booking.routes.js';
 import adminRoutes from './admin.routes.js';
 import mixerRoutes from './mixer.routes.js';
 import reportRoutes from './report.routes.js';
+import organizerApplicationRoutes from './organizer-application.routes.js';
+import notificationRoutes from './notification.routes.js';
 
 const router = Router();
 
@@ -18,5 +20,7 @@ router.use('/bookings', bookingRoutes);
 router.use('/admin', adminRoutes);
 router.use('/mixer', mixerRoutes);
 router.use('/reports', reportRoutes);
+router.use('/organizer-applications', organizerApplicationRoutes);
+router.use('/notifications', notificationRoutes);
 
 export default router;

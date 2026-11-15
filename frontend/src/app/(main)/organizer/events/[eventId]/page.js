@@ -29,6 +29,7 @@ import { formatDateTime } from '../../../../../utils/formatters.js';
 function OrganizerEventManageContent() {
   const { eventId } = useParams();
   const { user } = useAuth();
+  const isAuthorized = user?.role === 'organizer' || user?.role === 'admin';
 
   const [event, setEvent] = useState(null);
   const [attendees, setAttendees] = useState([]);
@@ -52,6 +53,10 @@ function OrganizerEventManageContent() {
   const processingCodeRef = useRef(false);
 
   const loadData = useCallback(async () => {
+    if (!isAuthorized) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setError('');
     try {
@@ -69,7 +74,7 @@ function OrganizerEventManageContent() {
     } finally {
       setLoading(false);
     }
-  }, [eventId, page]);
+  }, [eventId, page, isAuthorized]);
 
   useEffect(() => {
     loadData();
@@ -180,6 +185,32 @@ function OrganizerEventManageContent() {
       );
     }
   };
+
+  if (!isAuthorized) {
+    return (
+      <div className="max-w-lg mx-auto my-12">
+        <Card className="p-8 text-center space-y-4">
+          <h1 className="text-xl font-bold text-surface-900">Organizer Access Required</h1>
+          <p className="text-sm text-slate-600">
+            Only approved organizers or platform administrators can manage attendees and scan check-in
+            tickets.
+          </p>
+          <div className="flex items-center justify-center gap-2">
+            <Link href="/become-organizer">
+              <Button variant="primary" size="sm">
+                Apply to Become Organizer
+              </Button>
+            </Link>
+            <Link href="/events">
+              <Button variant="outline" size="sm">
+                Explore Activities
+              </Button>
+            </Link>
+          </div>
+        </Card>
+      </div>
+    );
+  }
 
   if (loading) {
     return <LoadingState message="Loading event attendees & scanner..." />;

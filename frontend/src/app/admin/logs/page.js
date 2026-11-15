@@ -16,6 +16,8 @@ const ACTION_OPTIONS = [
   { value: 'suspend_user', label: 'Suspend User' },
   { value: 'reactivate_user', label: 'Reactivate User' },
   { value: 'update_user_role', label: 'Update User Role' },
+  { value: 'approve_organizer_application', label: 'Approve Organizer App' },
+  { value: 'reject_organizer_application', label: 'Reject Organizer App' },
   { value: 'approve_event', label: 'Approve Event' },
   { value: 'reject_event', label: 'Reject Event' },
   { value: 'cancel_event', label: 'Cancel Event' },
@@ -173,6 +175,7 @@ export default function AdminModerationLogsPage() {
             <option value="event">Events</option>
             <option value="booking">Bookings</option>
             <option value="report">Reports</option>
+            <option value="organizer_application">Organizer Applications</option>
           </select>
 
           <select

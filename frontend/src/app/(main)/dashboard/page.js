@@ -6,6 +6,7 @@ import ProtectedRoute from '../../../components/auth/ProtectedRoute.js';
 import { useAuth } from '../../../context/AuthContext.js';
 import { eventService } from '../../../services/event.service.js';
 import reportService from '../../../services/report.service.js';
+import organizerApplicationService from '../../../services/organizer-application.service.js';
 import Card from '../../../components/common/Card.js';
 import Button from '../../../components/common/Button.js';
 import LoadingState from '../../../components/common/LoadingState.js';
@@ -28,6 +29,7 @@ function DashboardContent() {
   const { user } = useAuth();
   const [bookings, setBookings] = useState([]);
   const [myReports, setMyReports] = useState([]);
+  const [organizerAppStatus, setOrganizerAppStatus] = useState(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(null);
   const [feedback, setFeedback] = useState({ type: null, message: '' });
@@ -43,15 +45,19 @@ function DashboardContent() {
   const fetchHubData = useCallback(async () => {
     setLoading(true);
     try {
-      const [bookingsRes, reportsRes] = await Promise.all([
+      const [bookingsRes, reportsRes, appRes] = await Promise.all([
         eventService.getMyBookings({ limit: 20 }),
         reportService.getMyReports({ limit: 10 }).catch(() => null),
+        organizerApplicationService.getMyApplications({ limit: 1 }).catch(() => null),
       ]);
       if (bookingsRes?.data?.bookings) {
         setBookings(bookingsRes.data.bookings);
       }
       if (reportsRes?.data?.reports) {
         setMyReports(reportsRes.data.reports);
+      }
+      if (appRes?.data?.latestApplication) {
+        setOrganizerAppStatus(appRes.data.latestApplication);
       }
     } catch {
       // Handle gracefully
@@ -125,13 +131,31 @@ function DashboardContent() {
         </div>
 
         <div className="flex flex-wrap gap-2 shrink-0">
-          {(user?.role === 'organizer' || user?.role === 'admin') && (
+          {user?.role === 'organizer' || user?.role === 'admin' ? (
             <Link href="/organizer">
               <Button variant="outline" size="md" className="bg-white/10 text-white border-white/30 hover:bg-white/20">
                 Organizer Studio
               </Button>
             </Link>
+          ) : (
+            <Link href="/become-organizer">
+              <Button variant="outline" size="md" className="bg-white/10 text-white border-white/30 hover:bg-white/20">
+                {organizerAppStatus?.status === 'pending'
+                  ? 'Organizer App: Pending'
+                  : 'Become an Organizer'}
+              </Button>
+            </Link>
           )}
+          <Link href="/matches">
+            <Button variant="outline" size="md" className="bg-white/10 text-white border-white/30 hover:bg-white/20">
+              Mutual Matches
+            </Button>
+          </Link>
+          <Link href="/notifications">
+            <Button variant="outline" size="md" className="bg-white/10 text-white border-white/30 hover:bg-white/20">
+              Notifications
+            </Button>
+          </Link>
           <Link href="/events">
             <Button variant="secondary" size="md" className="shrink-0 font-semibold">
               <Compass className="w-4 h-4 mr-1.5" />

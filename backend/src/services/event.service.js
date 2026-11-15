@@ -5,6 +5,8 @@ import { BOOKING_STATUSES } from '../constants/booking.constants.js';
 import { USER_ROLES } from '../constants/user.constants.js';
 import { escapeRegex } from '../utils/regex.js';
 import { syncCompletedEventsIfConnected } from './event-lifecycle.service.js';
+import { NotificationService } from './notification.service.js';
+import { NOTIFICATION_TYPES } from '../constants/notification.constants.js';
 
 function createHttpError(message, statusCode) {
   const error = new Error(message);
@@ -252,6 +254,26 @@ export class EventService {
 
     Object.assign(event, sanitized);
     await event.save();
+
+    if (sanitized.status === EVENT_STATUSES.CANCELLED) {
+      const activeBookings = await Booking.find({
+        event: event._id,
+        status: BOOKING_STATUSES.CONFIRMED,
+      }).select('user');
+
+      for (const b of activeBookings) {
+        await NotificationService.safeCreate({
+          recipient: b.user,
+          title: 'Event Cancelled',
+          message: `The activity "${event.title}" has been cancelled by the host.`,
+          type: NOTIFICATION_TYPES.EVENT_CANCELLED,
+          entityType: 'event',
+          entityId: event._id,
+          link: '/dashboard',
+          dedupeKey: `host_canc_ev:${event._id}:${b.user}`,
+        });
+      }
+    }
 
     return event;
   }

@@ -281,4 +281,51 @@ export class AdminController {
       next(error);
     }
   }
+
+  static async listOrganizerApplications(req, res, next) {
+    try {
+      const result = await AdminService.listOrganizerApplications(req.query);
+      return ApiResponse.success(res, {
+        statusCode: 200,
+        message: 'Organizer applications retrieved successfully',
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async approveOrganizerApplication(req, res, next) {
+    try {
+      const result = await AdminService.approveOrganizerApplication(
+        req.params.applicationId,
+        req.user._id,
+        req.body
+      );
+      return ApiResponse.success(res, {
+        statusCode: 200,
+        message: 'Organizer application approved and user role updated',
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async rejectOrganizerApplication(req, res, next) {
+    try {
+      const result = await AdminService.rejectOrganizerApplication(
+        req.params.applicationId,
+        req.user._id,
+        req.body
+      );
+      return ApiResponse.success(res, {
+        statusCode: 200,
+        message: 'Organizer application rejected',
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
 }

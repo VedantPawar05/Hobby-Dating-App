@@ -4,6 +4,8 @@ import { Booking } from '../models/booking.model.js';
 import { Event } from '../models/event.model.js';
 import { EVENT_STATUSES } from '../constants/event.constants.js';
 import { BOOKING_STATUSES } from '../constants/booking.constants.js';
+import { NotificationService } from './notification.service.js';
+import { NOTIFICATION_TYPES } from '../constants/notification.constants.js';
 
 function createCheckInCode() {
   return crypto.randomBytes(8).toString('hex').toUpperCase();
@@ -88,6 +90,7 @@ export class BookingService {
 
     // Reactivate cancelled booking cleanly or create a new confirmed booking record.
     try {
+      let finalBooking = existingBooking;
       if (existingBooking && existingBooking.status === BOOKING_STATUSES.CANCELLED) {
         existingBooking.status = BOOKING_STATUSES.CONFIRMED;
         existingBooking.bookedAt = new Date();
@@ -96,18 +99,43 @@ export class BookingService {
         existingBooking.checkedInAt = null;
         existingBooking.checkInCode = createCheckInCode();
         await existingBooking.save();
-        return existingBooking;
+        finalBooking = existingBooking;
+      } else {
+        finalBooking = await Booking.create({
+          user: userId,
+          event: eventId,
+          status: BOOKING_STATUSES.CONFIRMED,
+          bookedAt: new Date(),
+          checkInCode: createCheckInCode(),
+        });
       }
 
-      const booking = await Booking.create({
-        user: userId,
-        event: eventId,
-        status: BOOKING_STATUSES.CONFIRMED,
-        bookedAt: new Date(),
-        checkInCode: createCheckInCode(),
+      // Send confirmed booking notifications safely
+      await NotificationService.safeCreate({
+        recipient: userId,
+        title: 'Booking Confirmed!',
+        message: `Your booking for "${event.title}" is confirmed. Present your QR ticket upon arrival.`,
+        type: NOTIFICATION_TYPES.BOOKING_CONFIRMED,
+        entityType: 'booking',
+        entityId: finalBooking._id,
+        link: '/dashboard',
+        dedupeKey: `book_conf:${finalBooking._id}`,
       });
 
-      return booking;
+      if (event.organizer && event.organizer.toString() !== userId.toString()) {
+        await NotificationService.safeCreate({
+          recipient: event.organizer,
+          title: 'New Event Booking',
+          message: `A new attendee reserved a spot for "${event.title}". Current bookings: ${reservedEvent.bookedCount}/${event.capacity}.`,
+          type: NOTIFICATION_TYPES.BOOKING_CONFIRMED,
+          entityType: 'booking',
+          entityId: finalBooking._id,
+          link: `/organizer/events/${event._id}`,
+          dedupeKey: `org_book_notif:${finalBooking._id}`,
+        });
+      }
+
+      return finalBooking;
     } catch (createError) {
       // Safely roll back the reserved slot on failure
       await Event.findByIdAndUpdate(eventId, { $inc: { bookedCount: -1 } });
@@ -170,7 +198,38 @@ export class BookingService {
     }
 
     // Decrement the event's booked count exactly once
-    await Event.findByIdAndUpdate(booking.event.toString(), { $inc: { bookedCount: -1 } });
+    const updatedEvent = await Event.findByIdAndUpdate(
+      booking.event.toString(),
+      { $inc: { bookedCount: -1 } }
+    );
+
+    // Notify attendee
+    await NotificationService.safeCreate({
+      recipient: userId,
+      title: 'Booking Cancelled',
+      message: `Your booking for "${updatedEvent?.title || 'the event'}" has been cancelled.`,
+      type: NOTIFICATION_TYPES.BOOKING_CANCELLED,
+      entityType: 'booking',
+      entityId: booking._id,
+      link: '/dashboard',
+      dedupeKey: `user_canc_book:${booking._id}`,
+    });
+
+    // Notify organizer if not self
+    if (updatedEvent?.organizer && updatedEvent.organizer.toString() !== userId.toString()) {
+      await NotificationService.safeCreate({
+        recipient: updatedEvent.organizer,
+        title: 'Attendee Cancelled Booking',
+        message: `An attendee cancelled their booking for "${updatedEvent.title}". Available slots: ${
+          updatedEvent.capacity - updatedEvent.bookedCount
+        }/${updatedEvent.capacity}.`,
+        type: NOTIFICATION_TYPES.BOOKING_CANCELLED,
+        entityType: 'booking',
+        entityId: booking._id,
+        link: `/organizer/events/${updatedEvent._id}`,
+        dedupeKey: `org_user_canc:${booking._id}`,
+      });
+    }
 
     return booking;
   }

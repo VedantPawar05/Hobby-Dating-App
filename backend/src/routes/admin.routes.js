@@ -18,6 +18,7 @@ import {
   adminReviewReportSchema,
   adminModerationLogsQuerySchema,
   adminUpdateRoleSchema,
+  adminOrganizerApplicationsQuerySchema,
 } from '../validators/admin.validator.js';
 
 const router = Router();
@@ -50,8 +51,25 @@ router.patch(
   AdminController.updateUserRole
 );
 
-// Organizer Management
+// Organizer Management & Applications
 router.get('/organizers', validateQuery(adminUsersQuerySchema), AdminController.listOrganizers);
+router.get(
+  '/organizer-applications',
+  validateQuery(adminOrganizerApplicationsQuerySchema),
+  AdminController.listOrganizerApplications
+);
+router.patch(
+  '/organizer-applications/:applicationId/approve',
+  validateObjectId('applicationId'),
+  validateRequest(adminOptionalReasonSchema),
+  AdminController.approveOrganizerApplication
+);
+router.patch(
+  '/organizer-applications/:applicationId/reject',
+  validateObjectId('applicationId'),
+  validateRequest(adminRequiredReasonSchema),
+  AdminController.rejectOrganizerApplication
+);
 
 // Event Management & Approvals
 router.get('/events', validateQuery(adminEventsQuerySchema), AdminController.listEvents);

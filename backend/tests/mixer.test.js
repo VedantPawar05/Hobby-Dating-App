@@ -6,6 +6,7 @@ import { User } from '../src/models/user.model.js';
 import { Event } from '../src/models/event.model.js';
 import { Booking } from '../src/models/booking.model.js';
 import { MixerTag } from '../src/models/mixer-tag.model.js';
+import { Match } from '../src/models/match.model.js';
 import { generateToken } from '../src/utils/token.js';
 import { MIXER_WINDOW_MS } from '../src/services/mixer.service.js';
 
@@ -363,6 +364,211 @@ describe('24-Hour Post-Event Mixer API (/api/mixer)', () => {
         .set('Authorization', `Bearer ${tokenA}`);
 
       expect(atExpiryGetRes.status).toBe(410);
+    });
+  });
+
+  describe('Mutual Matching & Match Reveal', () => {
+    const tokenB = generateToken({ id: attendeeBId, email: userB.email, role: 'user' });
+    const [sortedUserA, sortedUserB] = [attendeeAId, attendeeBId].sort();
+    const matchId = new mongoose.Types.ObjectId().toString();
+
+    it('keeps one-way tags private and does not create a match', async () => {
+      vi.spyOn(User, 'findById').mockResolvedValue(userA);
+      vi.spyOn(Event, 'findById').mockReturnValue(mockQueryChain(endedEvent));
+      vi.spyOn(Booking, 'findOne')
+        .mockResolvedValueOnce(verifiedBookingA)
+        .mockReturnValueOnce(mockQueryChain({ ...verifiedBookingB.toObject(), user: userB }));
+
+      vi.spyOn(MixerTag, 'findOne')
+        .mockResolvedValueOnce(null) // no duplicate outgoing tag
+        .mockResolvedValueOnce(null); // no reciprocal tag from B -> A
+
+      vi.spyOn(MixerTag, 'create').mockResolvedValue({
+        _id: new mongoose.Types.ObjectId(),
+        event: eventId,
+        fromUser: attendeeAId,
+        toUser: attendeeBId,
+        expiresAt: new Date(endedEnd.getTime() + MIXER_WINDOW_MS),
+        createdAt: baseNow,
+      });
+
+      const matchUpsertSpy = vi.spyOn(Match, 'findOneAndUpdate');
+
+      const res = await request(app)
+        .post(`/api/mixer/${eventId}/tags`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ toUserId: attendeeBId });
+
+      expect(res.status).toBe(201);
+      expect(res.body.data.matched).toBe(false);
+      expect(res.body.data.match).toBeNull();
+      expect(matchUpsertSpy).not.toHaveBeenCalled();
+    });
+
+    it('creates exactly one canonical mutual match when both users tag each other and reveals it', async () => {
+      vi.spyOn(User, 'findById').mockResolvedValue(userB);
+      vi.spyOn(Event, 'findById').mockReturnValue(mockQueryChain(endedEvent));
+      vi.spyOn(Booking, 'findOne')
+        .mockResolvedValueOnce({
+          _id: new mongoose.Types.ObjectId(),
+          user: attendeeBId,
+          event: eventId,
+          status: 'confirmed',
+          checkedIn: true,
+        })
+        .mockReturnValueOnce(mockQueryChain({ ...verifiedBookingA.toObject(), user: userA }));
+
+      vi.spyOn(MixerTag, 'findOne')
+        .mockResolvedValueOnce(null) // B has not tagged A yet
+        .mockResolvedValueOnce({ _id: 'tag-from-a', fromUser: attendeeAId, toUser: attendeeBId }); // reciprocal A -> B exists
+
+      vi.spyOn(MixerTag, 'create').mockResolvedValue({
+        _id: new mongoose.Types.ObjectId(),
+        event: eventId,
+        fromUser: attendeeBId,
+        toUser: attendeeAId,
+        expiresAt: new Date(endedEnd.getTime() + MIXER_WINDOW_MS),
+        createdAt: baseNow,
+      });
+
+      const populatedMatch = {
+        _id: matchId,
+        event: endedEvent,
+        userA: sortedUserA,
+        userB: sortedUserB,
+        users: [userA, userB],
+        matchedAt: baseNow,
+      };
+
+      const upsertSpy = vi
+        .spyOn(Match, 'findOneAndUpdate')
+        .mockReturnValue(mockQueryChain(populatedMatch));
+
+      const res = await request(app)
+        .post(`/api/mixer/${eventId}/tags`)
+        .set('Authorization', `Bearer ${tokenB}`)
+        .send({ toUserId: attendeeAId });
+
+      expect(res.status).toBe(201);
+      expect(res.body.data.matched).toBe(true);
+      expect(res.body.data.match).toMatchObject({
+        _id: matchId,
+        event: {
+          _id: eventId,
+          title: 'Marine Drive 5K Run',
+        },
+        matchedUser: {
+          _id: attendeeAId,
+          fullName: 'Aarav Verified',
+        },
+      });
+      expect(res.body.data.match.matchedUser.email).toBeUndefined();
+      expect(upsertSpy).toHaveBeenCalledWith(
+        { event: eventId, userA: sortedUserA, userB: sortedUserB },
+        expect.objectContaining({
+          $setOnInsert: expect.objectContaining({
+            event: eventId,
+            userA: sortedUserA,
+            userB: sortedUserB,
+            users: [sortedUserA, sortedUserB],
+          }),
+        }),
+        { upsert: true, new: true }
+      );
+    });
+
+    it('handles concurrent mutual tagging safely when upsert hits duplicate key 11000', async () => {
+      vi.spyOn(User, 'findById').mockResolvedValue(userA);
+      vi.spyOn(Event, 'findById').mockReturnValue(mockQueryChain(endedEvent));
+      vi.spyOn(Booking, 'findOne')
+        .mockResolvedValueOnce(verifiedBookingA)
+        .mockReturnValueOnce(mockQueryChain({ ...verifiedBookingB.toObject(), user: userB }));
+
+      vi.spyOn(MixerTag, 'findOne')
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({ _id: 'reciprocal-tag' });
+
+      vi.spyOn(MixerTag, 'create').mockResolvedValue({
+        _id: new mongoose.Types.ObjectId(),
+        event: eventId,
+        fromUser: attendeeAId,
+        toUser: attendeeBId,
+        expiresAt: new Date(endedEnd.getTime() + MIXER_WINDOW_MS),
+        createdAt: baseNow,
+      });
+
+      const dupError = new Error('E11000 duplicate key');
+      dupError.code = 11000;
+      vi.spyOn(Match, 'findOneAndUpdate').mockReturnValue({
+        populate: vi.fn().mockReturnValue({
+          populate: vi.fn().mockRejectedValue(dupError),
+        }),
+      });
+
+      const existingMatch = {
+        _id: matchId,
+        event: endedEvent,
+        userA: sortedUserA,
+        userB: sortedUserB,
+        users: [userA, userB],
+        matchedAt: baseNow,
+      };
+      vi.spyOn(Match, 'findOne').mockReturnValue(mockQueryChain(existingMatch));
+
+      const res = await request(app)
+        .post(`/api/mixer/${eventId}/tags`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ toUserId: attendeeBId });
+
+      expect(res.status).toBe(201);
+      expect(res.body.data.matched).toBe(true);
+      expect(res.body.data.match._id).toBe(matchId);
+    });
+
+    it('allows both participants to retrieve their mutual matches and blocks non-participants', async () => {
+      const matchRecord = {
+        _id: matchId,
+        event: endedEvent,
+        userA: sortedUserA,
+        userB: sortedUserB,
+        users: [userA, userB],
+        matchedAt: baseNow,
+      };
+
+      // User A lists matches
+      vi.spyOn(User, 'findById').mockResolvedValue(userA);
+      vi.spyOn(Match, 'find').mockReturnValue(mockQueryChain([matchRecord]));
+      vi.spyOn(Match, 'countDocuments').mockResolvedValue(1);
+
+      const listResA = await request(app)
+        .get('/api/mixer/matches')
+        .set('Authorization', `Bearer ${tokenA}`);
+
+      expect(listResA.status).toBe(200);
+      expect(listResA.body.data.matches).toHaveLength(1);
+      expect(listResA.body.data.matches[0].matchedUser._id).toBe(attendeeBId);
+
+      // User B fetches match details
+      vi.spyOn(User, 'findById').mockResolvedValue(userB);
+      vi.spyOn(Match, 'findById').mockReturnValue(mockQueryChain(matchRecord));
+
+      const detailResB = await request(app)
+        .get(`/api/mixer/matches/${matchId}`)
+        .set('Authorization', `Bearer ${tokenB}`);
+
+      expect(detailResB.status).toBe(200);
+      expect(detailResB.body.data.match.matchedUser._id).toBe(attendeeAId);
+
+      // Non-participant outsider is rejected with 403
+      vi.spyOn(User, 'findById').mockResolvedValue(outsiderUser);
+      vi.spyOn(Match, 'findById').mockReturnValue(mockQueryChain(matchRecord));
+
+      const outsiderRes = await request(app)
+        .get(`/api/mixer/matches/${matchId}`)
+        .set('Authorization', `Bearer ${tokenOutsider}`);
+
+      expect(outsiderRes.status).toBe(403);
+      expect(outsiderRes.body.success).toBe(false);
     });
   });
 });

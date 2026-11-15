@@ -104,14 +104,21 @@ function OrganizerStudioContent() {
           </div>
           <h1 className="text-xl font-bold text-surface-900">Organizer Access Required</h1>
           <p className="text-sm text-slate-600">
-            Only verified community organizers or platform administrators can host and manage
-            events. Contact an admin to promote your account.
+            Only approved community organizers or platform administrators can host and manage
+            events. Submit an organizer application for admin review to unlock Organizer Studio.
           </p>
-          <Link href="/events">
-            <Button variant="primary" size="sm">
-              Explore Activities
-            </Button>
-          </Link>
+          <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
+            <Link href="/become-organizer">
+              <Button variant="primary" size="sm">
+                Apply to Become Organizer
+              </Button>
+            </Link>
+            <Link href="/events">
+              <Button variant="outline" size="sm">
+                Explore Activities
+              </Button>
+            </Link>
+          </div>
         </Card>
       </div>
     );

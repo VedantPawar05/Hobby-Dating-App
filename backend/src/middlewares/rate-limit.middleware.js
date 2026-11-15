@@ -100,3 +100,10 @@ export const checkInRateLimiter = createRateLimiter({
   message: 'Too many check-in scan requests. Please pause briefly and retry.',
   keyGenerator: (req) => `checkin:${byUserOrIp(req)}`,
 });
+
+export const applicationRateLimiter = createRateLimiter({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: 'Too many organizer application requests. Please wait before submitting again.',
+  keyGenerator: (req) => `application:${byUserOrIp(req)}`,
+});

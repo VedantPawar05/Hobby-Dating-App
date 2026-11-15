@@ -9,12 +9,27 @@ import {
 import {
   mixerQuerySchema,
   createMixerTagSchema,
+  matchesQuerySchema,
 } from '../validators/mixer.validator.js';
 
 const router = Router();
 
 // Every mixer route requires authentication
 router.use(authenticate);
+
+// Retrieve authenticated user's mutual matches (must precede /:eventId)
+router.get(
+  '/matches',
+  validateQuery(matchesQuerySchema),
+  MixerController.getMyMatches
+);
+
+// Retrieve details for a specific mutual match (participant-only)
+router.get(
+  '/matches/:matchId',
+  validateObjectId('matchId'),
+  MixerController.getMatchById
+);
 
 // Check mixer eligibility & 24-hour window timing for a specific event
 router.get(

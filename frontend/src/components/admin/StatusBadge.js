@@ -4,6 +4,7 @@ import React from 'react';
 
 const STATUS_STYLES = {
   active: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  approved: 'bg-emerald-50 text-emerald-700 border-emerald-200',
   confirmed: 'bg-emerald-50 text-emerald-700 border-emerald-200',
   checked_in: 'bg-emerald-50 text-emerald-700 border-emerald-200',
   suspended: 'bg-red-50 text-red-700 border-red-200',

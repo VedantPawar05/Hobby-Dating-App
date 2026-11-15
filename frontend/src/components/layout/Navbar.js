@@ -4,8 +4,20 @@ import React, { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '../../context/AuthContext.js';
-import { Compass, User, LogOut, Menu, X, Sparkles, Shield, CalendarDays } from 'lucide-react';
+import {
+  Compass,
+  User,
+  LogOut,
+  Menu,
+  X,
+  Sparkles,
+  Shield,
+  CalendarDays,
+  HeartHandshake,
+  Bell,
+} from 'lucide-react';
 import Button from '../common/Button.js';
+import NotificationBell from '../notifications/NotificationBell.js';
 
 export function Navbar() {
   const { user, isAuthenticated, logout } = useAuth();
@@ -17,10 +29,12 @@ export function Navbar() {
     ...(isAuthenticated
       ? [
           { href: '/dashboard', label: 'My Hub', icon: Sparkles },
+          { href: '/matches', label: 'Matches', icon: HeartHandshake },
           ...(user?.role === 'organizer' || user?.role === 'admin'
             ? [{ href: '/organizer', label: 'Organizer', icon: CalendarDays }]
-            : []),
+            : [{ href: '/become-organizer', label: 'Host Events', icon: CalendarDays }]),
           { href: '/profile', label: 'Profile', icon: User },
+          { href: '/notifications', label: 'Notifications', icon: Bell },
           ...(user?.role === 'admin'
             ? [{ href: '/admin', label: 'Admin', icon: Shield }]
             : []),
@@ -75,6 +89,7 @@ export function Navbar() {
           <div className="hidden md:flex items-center space-x-3">
             {isAuthenticated ? (
               <div className="flex items-center space-x-3 pl-3 border-l border-surface-200">
+                <NotificationBell />
                 <Link
                   href="/profile"
                   className="flex items-center space-x-2.5 text-sm font-medium text-surface-700 hover:text-surface-900"

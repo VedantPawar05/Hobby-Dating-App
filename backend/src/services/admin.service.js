@@ -3,9 +3,11 @@ import { Event } from '../models/event.model.js';
 import { Booking } from '../models/booking.model.js';
 import { Report } from '../models/report.model.js';
 import { ModerationLog } from '../models/moderation-log.model.js';
+import { OrganizerApplication } from '../models/organizer-application.model.js';
 import { USER_ROLES } from '../constants/user.constants.js';
 import { EVENT_STATUSES } from '../constants/event.constants.js';
 import { BOOKING_STATUSES } from '../constants/booking.constants.js';
+import { ORGANIZER_APPLICATION_STATUSES } from '../constants/organizer-application.constants.js';
 import {
   MODERATION_ACTIONS,
   MODERATION_TARGET_TYPES,
@@ -15,6 +17,8 @@ import {
 import { escapeRegex } from '../utils/regex.js';
 import { syncCompletedEventsIfConnected } from './event-lifecycle.service.js';
 import { UserService } from './user.service.js';
+import { NotificationService } from './notification.service.js';
+import { NOTIFICATION_TYPES } from '../constants/notification.constants.js';
 
 /**
  * Creates a standardized error with HTTP status code.
@@ -453,6 +457,43 @@ export class AdminService {
     });
 
     await event.populate('organizer', 'fullName email city role isActive');
+
+    const organizerId = event.organizer?._id || event.organizer;
+    if (targetStatus === EVENT_STATUSES.PUBLISHED) {
+      await NotificationService.safeCreate({
+        recipient: organizerId,
+        title: 'Event Approved! 🎉',
+        message: `Your event "${event.title}" has been approved by admin moderation and is now published for discovery and bookings.`,
+        type: NOTIFICATION_TYPES.EVENT_APPROVED,
+        entityType: 'event',
+        entityId: event._id,
+        link: `/events/${event._id}`,
+        dedupeKey: `event_appr:${event._id}`,
+      });
+    } else if (targetStatus === EVENT_STATUSES.REJECTED) {
+      await NotificationService.safeCreate({
+        recipient: organizerId,
+        title: 'Event Submission Update',
+        message: `Your event "${event.title}" was not approved by admin moderation. Reason: ${reason || 'Does not meet event guidelines.'}`,
+        type: NOTIFICATION_TYPES.EVENT_REJECTED,
+        entityType: 'event',
+        entityId: event._id,
+        link: `/organizer/events/${event._id}`,
+        dedupeKey: `event_rej:${event._id}`,
+      });
+    } else if (targetStatus === EVENT_STATUSES.CANCELLED) {
+      await NotificationService.safeCreate({
+        recipient: organizerId,
+        title: 'Event Cancelled by Moderation',
+        message: `Your event "${event.title}" was cancelled by admin moderation. Reason: ${reason}`,
+        type: NOTIFICATION_TYPES.EVENT_CANCELLED,
+        entityType: 'event',
+        entityId: event._id,
+        link: `/organizer/events/${event._id}`,
+        dedupeKey: `event_canc:${event._id}`,
+      });
+    }
+
     return event;
   }
 
@@ -693,6 +734,18 @@ export class AdminService {
       },
     });
 
+    const attendeeId = booking.user?._id || booking.user;
+    await NotificationService.safeCreate({
+      recipient: attendeeId,
+      title: 'Booking Cancelled by Moderation',
+      message: `Your booking for "${booking.event?.title || 'the event'}" was cancelled by platform moderation. Reason: ${reason.trim()}`,
+      type: NOTIFICATION_TYPES.BOOKING_CANCELLED,
+      entityType: 'booking',
+      entityId: booking._id,
+      link: '/dashboard',
+      dedupeKey: `admin_canc_book:${booking._id}`,
+    });
+
     return booking;
   }
 
@@ -761,5 +814,192 @@ export class AdminService {
       logs: items,
       pagination,
     };
+  }
+
+  /**
+   * Lists organizer applications with status filtering, search, and pagination.
+   */
+  static async listOrganizerApplications({ status, search, page = 1, limit = 10 } = {}) {
+    const query = {};
+    if (status) {
+      query.status = status;
+    }
+
+    if (search) {
+      const pattern = new RegExp(escapeRegex(search.trim()), 'i');
+      const matchingUsers = await User.find({
+        $or: [{ fullName: pattern }, { email: pattern }],
+      }).select('_id');
+
+      const orConditions = [
+        { organizationName: pattern },
+        { hostingCity: pattern },
+        { contactEmail: pattern },
+      ];
+      if (matchingUsers.length > 0) {
+        orConditions.push({ applicant: { $in: matchingUsers.map((u) => u._id) } });
+      }
+      query.$or = orConditions;
+    }
+
+    const { items, pagination } = await paginateQuery(OrganizerApplication, query, {
+      page,
+      limit,
+      sort: { createdAt: -1 },
+      populate: [
+        { path: 'applicant', select: 'fullName email city role isActive createdAt' },
+        { path: 'reviewedBy', select: 'fullName email role' },
+      ],
+    });
+
+    return {
+      applications: items,
+      pagination,
+    };
+  }
+
+  /**
+   * Approves a pending organizer application, upgrades the applicant's role to
+   * organizer (if currently a normal user), and records a moderation audit log.
+   */
+  static async approveOrganizerApplication(applicationId, adminId, { reason = '' } = {}) {
+    const application = await OrganizerApplication.findOneAndUpdate(
+      {
+        _id: applicationId,
+        status: ORGANIZER_APPLICATION_STATUSES.PENDING,
+      },
+      {
+        $set: {
+          status: ORGANIZER_APPLICATION_STATUSES.APPROVED,
+          reviewedBy: adminId,
+          reviewedAt: new Date(),
+          decisionNote: reason.trim(),
+          rejectionReason: '',
+        },
+      },
+      { new: true }
+    )
+      .populate('applicant', 'fullName email city role isActive')
+      .populate('reviewedBy', 'fullName email role');
+
+    if (!application) {
+      const existing = await OrganizerApplication.findById(applicationId);
+      if (!existing) {
+        throw createHttpError('Organizer application not found', 404);
+      }
+      throw createHttpError(
+        `Application has already been ${existing.status}`,
+        409
+      );
+    }
+
+    const applicantId = application.applicant?._id
+      ? application.applicant._id
+      : application.applicant;
+
+    const updatedUser = await User.findOneAndUpdate(
+      { _id: applicantId, role: USER_ROLES.USER },
+      { $set: { role: USER_ROLES.ORGANIZER } },
+      { new: true }
+    ).select('-password');
+
+    if (updatedUser && application.applicant && typeof application.applicant === 'object') {
+      application.applicant.role = updatedUser.role;
+    }
+
+    await recordModerationLog({
+      adminId,
+      actionType: MODERATION_ACTIONS.APPROVE_ORGANIZER_APPLICATION,
+      targetType: MODERATION_TARGET_TYPES.ORGANIZER_APPLICATION,
+      targetId: application._id,
+      reason: reason.trim(),
+      metadata: {
+        applicantId: applicantId.toString(),
+        organizationName: application.organizationName,
+        email: application.contactEmail,
+      },
+    });
+
+    await NotificationService.safeCreate({
+      recipient: applicantId,
+      title: 'Organizer Application Approved! 🎉',
+      message: `Congratulations! Your application to host with "${application.organizationName}" has been approved. You now have access to Organizer Studio.`,
+      type: NOTIFICATION_TYPES.ORGANIZER_APPLICATION_APPROVED,
+      entityType: 'organizer_application',
+      entityId: application._id,
+      link: '/organizer',
+      dedupeKey: `app_appr:${application._id}`,
+    });
+
+    return {
+      application,
+      user: updatedUser ? updatedUser.toSafeObject() : null,
+    };
+  }
+
+  /**
+   * Rejects a pending organizer application with a mandatory rejection reason
+   * and records a moderation audit log.
+   */
+  static async rejectOrganizerApplication(applicationId, adminId, { reason }) {
+    const application = await OrganizerApplication.findOneAndUpdate(
+      {
+        _id: applicationId,
+        status: ORGANIZER_APPLICATION_STATUSES.PENDING,
+      },
+      {
+        $set: {
+          status: ORGANIZER_APPLICATION_STATUSES.REJECTED,
+          reviewedBy: adminId,
+          reviewedAt: new Date(),
+          rejectionReason: reason.trim(),
+          decisionNote: reason.trim(),
+        },
+      },
+      { new: true }
+    )
+      .populate('applicant', 'fullName email city role isActive')
+      .populate('reviewedBy', 'fullName email role');
+
+    if (!application) {
+      const existing = await OrganizerApplication.findById(applicationId);
+      if (!existing) {
+        throw createHttpError('Organizer application not found', 404);
+      }
+      throw createHttpError(
+        `Application has already been ${existing.status}`,
+        409
+      );
+    }
+
+    const applicantId = application.applicant?._id
+      ? application.applicant._id
+      : application.applicant;
+
+    await recordModerationLog({
+      adminId,
+      actionType: MODERATION_ACTIONS.REJECT_ORGANIZER_APPLICATION,
+      targetType: MODERATION_TARGET_TYPES.ORGANIZER_APPLICATION,
+      targetId: application._id,
+      reason: reason.trim(),
+      metadata: {
+        applicantId: applicantId.toString(),
+        organizationName: application.organizationName,
+        email: application.contactEmail,
+      },
+    });
+
+    await NotificationService.safeCreate({
+      recipient: applicantId,
+      title: 'Organizer Application Update',
+      message: `Your application to host with "${application.organizationName}" was not approved. Reason: ${reason.trim()}`,
+      type: NOTIFICATION_TYPES.ORGANIZER_APPLICATION_REJECTED,
+      entityType: 'organizer_application',
+      entityId: application._id,
+      link: '/become-organizer',
+      dedupeKey: `app_rej:${application._id}`,
+    });
+
+    return { application };
   }
 }

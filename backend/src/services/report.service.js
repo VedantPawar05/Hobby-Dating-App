@@ -2,6 +2,8 @@ import { Report } from '../models/report.model.js';
 import { User } from '../models/user.model.js';
 import { Event } from '../models/event.model.js';
 import { REPORT_STATUSES, REPORT_TARGET_TYPES } from '../constants/admin.constants.js';
+import { NotificationService } from './notification.service.js';
+import { NOTIFICATION_TYPES } from '../constants/notification.constants.js';
 
 function createHttpError(message, statusCode) {
   const error = new Error(message);
@@ -59,6 +61,17 @@ export class ReportService {
       reason: reason.trim(),
       details: details.trim(),
       status: REPORT_STATUSES.OPEN,
+    });
+
+    // Notify administrators of incoming moderation report
+    await NotificationService.safeNotifyAdmins({
+      title: 'New Moderation Report Submitted',
+      message: `A member submitted a report against ${targetType === REPORT_TARGET_TYPES.USER ? 'a user account' : 'an event'}. Reason: ${report.reason}`,
+      type: NOTIFICATION_TYPES.ADMIN_NEW_REPORT,
+      entityType: 'report',
+      entityId: report._id,
+      link: '/admin/reports',
+      dedupeKeyPrefix: `admin_rep_sub:${report._id}`,
     });
 
     return report;

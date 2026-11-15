@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { ALLOWED_ROLES, USER_ROLES } from '../constants/user.constants.js';
 import { ALLOWED_EVENT_STATUSES, EVENT_CATEGORIES } from '../constants/event.constants.js';
 import { ALLOWED_BOOKING_STATUSES } from '../constants/booking.constants.js';
+import { ALLOWED_ORGANIZER_APPLICATION_STATUSES } from '../constants/organizer-application.constants.js';
 import {
   ALLOWED_MODERATION_ACTIONS,
   ALLOWED_MODERATION_TARGET_TYPES,
@@ -145,3 +146,9 @@ export const adminUpdateRoleSchema = z
       .default(''),
   })
   .strict('Unrecognized fields provided for role update');
+
+export const adminOrganizerApplicationsQuerySchema = z.object({
+  search: z.string().trim().optional(),
+  status: z.enum(ALLOWED_ORGANIZER_APPLICATION_STATUSES).optional(),
+  ...paginationFields,
+});

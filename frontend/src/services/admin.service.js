@@ -40,6 +40,18 @@ export const adminService = {
     return api.get('/admin/organizers', { params: cleanQuery(params) });
   },
 
+  async getOrganizerApplications(params = {}) {
+    return api.get('/admin/organizer-applications', { params: cleanQuery(params) });
+  },
+
+  async approveOrganizerApplication(applicationId, reason = '') {
+    return api.patch(`/admin/organizer-applications/${applicationId}/approve`, { reason });
+  },
+
+  async rejectOrganizerApplication(applicationId, reason) {
+    return api.patch(`/admin/organizer-applications/${applicationId}/reject`, { reason });
+  },
+
   async getEvents(params = {}) {
     return api.get('/admin/events', { params: cleanQuery(params) });
   },

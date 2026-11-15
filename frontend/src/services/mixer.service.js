@@ -21,6 +21,20 @@ export const mixerService = {
   async tagAttendee(eventId, toUserId) {
     return api.post(`/mixer/${eventId}/tags`, { toUserId });
   },
+
+  /**
+   * Retrieves authenticated user's mutual matches (optionally filtered by eventId).
+   */
+  async getMyMatches(params = {}) {
+    return api.get('/mixer/matches', { params });
+  },
+
+  /**
+   * Retrieves details for a specific mutual match the user participates in.
+   */
+  async getMatchById(matchId) {
+    return api.get(`/mixer/matches/${matchId}`);
+  },
 };
 
 export default mixerService;

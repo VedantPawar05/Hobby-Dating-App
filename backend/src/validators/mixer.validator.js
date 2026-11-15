@@ -17,4 +17,16 @@ export const createMixerTagSchema = z
   })
   .strict('Unrecognized fields provided');
 
+export const matchesQuerySchema = z.object({
+  eventId: z
+    .string()
+    .trim()
+    .refine((val) => mongoose.Types.ObjectId.isValid(val), {
+      message: 'Invalid event ID format',
+    })
+    .optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(50).default(20),
+});
+
 

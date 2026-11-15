@@ -6,6 +6,8 @@ export const MODERATION_ACTIONS = {
   SUSPEND_USER: 'suspend_user',
   REACTIVATE_USER: 'reactivate_user',
   UPDATE_USER_ROLE: 'update_user_role',
+  APPROVE_ORGANIZER_APPLICATION: 'approve_organizer_application',
+  REJECT_ORGANIZER_APPLICATION: 'reject_organizer_application',
   APPROVE_EVENT: 'approve_event',
   REJECT_EVENT: 'reject_event',
   CANCEL_EVENT: 'cancel_event',
@@ -22,6 +24,7 @@ export const MODERATION_TARGET_TYPES = {
   EVENT: 'event',
   BOOKING: 'booking',
   REPORT: 'report',
+  ORGANIZER_APPLICATION: 'organizer_application',
 };
 
 export const ALLOWED_MODERATION_TARGET_TYPES = Object.values(MODERATION_TARGET_TYPES);
